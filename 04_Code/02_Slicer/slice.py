@@ -17,7 +17,7 @@ class Slice():
         self.layer_height = layer_height
         self.continuous_shell = continuous_shell
         self.shift_curve_start = shift_curve_start
-        self.line_definition = layer_height*15
+        self.line_definition = layer_height*50
         self.intersection_buffer = 0.04
         self.fix_self_intersections_bool = fix_self_intersections
         self.smooth_curves_bool = smooth_curves
@@ -54,13 +54,8 @@ class Slice():
 
                 self.contour_curves = self.regenerate_curves(self.contour_curves, self.regenerate_index)
 
-        else:
 
-            self.seaming_points = []
-
-            self.resampled_points = []
-
-        if self.fix_self_intersections_bool:
+        elif self.fix_self_intersections_bool:
 
             self.contour_curves = self.fix_self_intersections(self.contour_curves, self.intersection_buffer, self.layer_height)
 
@@ -68,9 +63,14 @@ class Slice():
 
                 self.seaming_points = self.align_seams(self.contour_curves, 0.08)
 
-        if self.smooth_curves_bool:
+        elif self.smooth_curves_bool:
 
             self.contour_curves = self.smooth_curves(self.contour_curves, self.layer_height, 0.6)
+
+        else:
+
+            self.contour_curves, self.seaming_points = self.auto_align_seams(self.contour_curves)
+
 
         self.resampled_points = self.resample_points_by_count(self.contour_curves, self.line_definition)
 
@@ -178,6 +178,95 @@ class Slice():
                 resampled_points.append(p)
 
         return resampled_points
+
+
+    def reorganize_by_height(self, curve_list):
+
+        temp_list = []
+        nested_list = []
+
+        for i, c in enumerate(curve_list[:-2]):
+
+            c_height_01 = c.PointAtStart.Z
+            c_height_02 = curve_list[i+1].PointAtStart.Z
+
+            if self.is_almost_equal(c_height_01, c_height_02):
+
+                temp_list.append(c)
+
+            else:
+
+                temp_list.append(c)
+                nested_list.append(temp_list)
+                temp_list = []
+
+        return nested_list
+
+
+    def auto_align_seams(self, curve_list):
+
+        """aligns all seams of all curves
+        """
+
+        nested_curve_list = self.reorganize_by_height(curve_list)
+
+        seaming_points = []
+        aligned_curves = []
+
+        for i, curve_list in enumerate(nested_curve_list):
+
+            center_point = self.get_center_of_curves(curve_list)
+
+            for j, c in enumerate(curve_list):
+
+                if len(curve_list) == 1 and len(seaming_points) > 0:
+
+                    closest_seam_point = seaming_points[i-1]
+                    _, v = c.ClosestPoint(closest_seam_point)
+
+                else:
+
+                    _, v = c.ClosestPoint(center_point)
+
+                c.ChangeClosedCurveSeam(v)
+                c.Domain = rg.Interval(0, 1)
+                seaming_points.append(c.PointAt(0))
+                aligned_curves.append(c)
+
+        return aligned_curves, seaming_points
+
+
+    def two_d_distance(self, point01, point02):
+
+        dist = math.sqrt((point01.X - point02.X)**2 + (point01.Y - point02.Y)**2)
+
+        return dist
+
+
+    def get_center_of_curves(self, curve_list):
+
+        sum_x = 0
+        sum_y = 0
+        point_count = 0
+
+        for curve in curve_list:
+
+            divisions = curve.DivideByCount(20, True)
+            point_list = [curve.PointAt(d) for d in divisions]
+
+            for p in point_list:
+
+                sum_x += p.X
+                sum_y += p.Y
+
+                point_count += 1
+
+        avrg_x = sum_x/point_count
+        avrg_y = sum_y/point_count
+
+        avrg_p = rg.Point3d(avrg_x, avrg_y, curve_list[0].PointAtStart.Z)
+
+        return avrg_p
 
 
     def resample_points_by_length(self, curves, length):
@@ -329,37 +418,37 @@ class Slice():
         return regenerate_index, reconst_curves
 
 
-    def reorganize_by_height(self, curves, layer_height):
-
-        """reorganizes a list of curves into lists with the same height
-        """
-
-        step = 0
-
-        nested_c_list = []
-
-        for h in range(int(curves[-1].PointAtStart.Z/layer_height)+1):
-
-            c_list = []
-
-            for i, c in enumerate(curves[step:]):
-
-                z_value = c.PointAtStart.Z
-
-                height_bool = self.is_almost_equal(h * layer_height, z_value)
-
-                if height_bool:
-
-                    c_list.append(c)
-
-                else:
-
-                    step += len(c_list)
-                    break
-
-            nested_c_list.append(c_list)
-
-        return nested_c_list
+    # def reorganize_by_height(self, curves, layer_height):
+    #
+    #     """reorganizes a list of curves into lists with the same height
+    #     """
+    #
+    #     step = 0
+    #
+    #     nested_c_list = []
+    #
+    #     for h in range(int(curves[-1].PointAtStart.Z/layer_height)+1):
+    #
+    #         c_list = []
+    #
+    #         for i, c in enumerate(curves[step:]):
+    #
+    #             z_value = c.PointAtStart.Z
+    #
+    #             height_bool = self.is_almost_equal(h * layer_height, z_value)
+    #
+    #             if height_bool:
+    #
+    #                 c_list.append(c)
+    #
+    #             else:
+    #
+    #                 step += len(c_list)
+    #                 break
+    #
+    #         nested_c_list.append(c_list)
+    #
+    #     return nested_c_list
 
 
     def reorganize_by_length(self, curves, layer_height):
