@@ -51,6 +51,8 @@ class ShortestPath():
 
                     temp_list = self.shift_list_index(c, shortest_path[-1])
 
+                    print len(temp_list)
+
                     for p in temp_list:
 
                         shortest_path.append(p)
@@ -75,18 +77,25 @@ class ShortestPath():
             if dist_p01_p02 < standard_dist*2:
 
                 temp_list.append(p01)
+                # print p01
 
                 if i == (len(point_list) - 2):
 
-                    temp_list.append(p02)
-                    # print len(temp_list)
-                    # temp_list.append(temp_list[0])
-                    # print len(temp_list)
-                    nested_list.append(temp_list)
+                        temp_list.append(p02)
+                        temp_list.append(temp_list[0])
+                        # print len(temp_list)
+                        # temp_list.append(temp_list[0])
+                        # print len(temp_list)
+                        nested_list.append(temp_list)
+                        temp_list = []
 
             else:
 
                 temp_list.append(p01)
+                # print temp_list[0]
+                temp_list.append(temp_list[0])
+                print len(temp_list)
+                # print "out"
                 # temp_list.append(p02)
                 # temp_list.append(temp_list[0])
                 nested_list.append(temp_list)
@@ -143,7 +152,7 @@ class ShortestPath():
 
     def shift_index(self, seq, shift=1):
 
-        return seq[shift:] + seq[:shift-1]
+        return seq[shift:] + seq[:shift+1]
 
 
     def shift_list_index(self, point_list, closest_point):
