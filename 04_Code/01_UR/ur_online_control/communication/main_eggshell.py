@@ -63,15 +63,17 @@ def main():
         print("3: safe in pose")
         x, y, z, ax, ay, az, speed, acc = safety_pose_cmd
         ur.send_command_movel([x, y, z, ax, ay, az], v=speed, a=acc)
-        # ur.send_command_wait(1.0)
+        ur.send_command_wait(1.0)
+
+        #turn on air
+        ur.send_command_digital_out(5, True)
 
         ur.wait_for_ready()
         ur.send_command_popup(title='hello!', message='Press ok when you are ready!', blocking=True)
         ur.wait_for_ready()
 
-        #turn on motor and extruder
+        #turn on motor
         ur.send_command_digital_out(4, True)
-        ur.send_command_digital_out(5, True)
 
         ur.wait_for_ready()
         ur.send_command_popup(title='hello!', message='Press ok when you are ready!', blocking=True)
@@ -91,8 +93,8 @@ def main():
         for i in range(0, len(commands)):
 
             printing_cmd = commands[i]
-            x, y, z, ax, ay, az, acc, speed, radius = printing_cmd
-            ur.send_command_movel([x, y, z, ax, ay, az], a=acc, v=speed, r=radius)
+            x, y, z, ax, ay, az, speed, radius = printing_cmd
+            ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
 
         ### Safe Pose ###
         safety_pose_cmd = gh.wait_for_float_list() #6 client.send(MSG_FLOAT_LIST, safe_out_pose_cmd)

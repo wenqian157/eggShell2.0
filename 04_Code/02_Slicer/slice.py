@@ -52,11 +52,11 @@ class Slice():
 
         # self.contour_curves = self.shortest_path(self.contour_curves, self.layer_height)
 
-        self.resampled_points = self.resample_points_by_count(self.contour_curves, self.line_definition)
+        # self.resampled_points = self.resample_points_by_count(self.contour_curves, self.line_definition)
 
         # self.resampled_points = self.del_very_close_points(self.resampled_points, self.layer_height)
 
-        return self.contour_curves, self.resampled_points, self.seaming_points
+        return self.contour_curves, self.seaming_points
 
 
     def shortest_path(self, curves, layer_height, max_branch_diff=25):
@@ -223,6 +223,8 @@ class Slice():
 
         for c in curves:
 
+            temp_list = []
+
             length = c.GetLength()
             points_per_curve = int(round(length/line_definition))
 
@@ -233,7 +235,9 @@ class Slice():
 
             for p in points:
 
-                resampled_points.append(p)
+                temp_list.append(p)
+
+            resampled_points.append(temp_list)
 
         return resampled_points
 
@@ -277,18 +281,40 @@ class Slice():
 
             for j, c in enumerate(curve_list):
 
+                c.Domain = rg.Interval(0, 1)
+
                 if len(curve_list) == 1 and len(seaming_points) > 0:
 
-                    closest_seam_point = seaming_points[i-1]
+                    closest_seam_point = seaming_points[0]
                     _, v = c.ClosestPoint(closest_seam_point)
+                    # v01 = c.PointAt(v)
+                    # dist_01 = self.two_d_distance(v01, center_point)
+                    #
+                    # _, v02 = c.ClosestPoint(center_point)
+                    # v02 = c.PointAt(v02)
+                    # dist_02 = self.two_d_distance(v02, center_point)
+                    #
+                    # if dist_01 > dist_02:
+                    #
+                    #     v += 0.00005
+                    #     v03 = c.PointAt(v)
+                    #     dist_03 = self.two_d_distance(v03, center_point)
+                    #
+                    #     if dist_03 > dist_02:
+                    #
+                    #         v -= 0.0001
+                    #
+                    #
+                    # if abs(v-v02) < .1:
+                    #
+                    #     v = v02
 
                 else:
 
                     _, v = c.ClosestPoint(center_point)
 
                 c.ChangeClosedCurveSeam(v)
-                c.Domain = rg.Interval(0, 1)
-                seaming_points.append(c.PointAt(0))
+                seaming_points.append(c.PointAt(v))
                 aligned_curves.append(c)
 
         return aligned_curves, seaming_points
