@@ -97,7 +97,7 @@ def read_and_identify():
 
 			BUFFER_COMMAND[WRITE_PTR] = msg_command_id
 			BUFFER_COMMAND_COUNTER[WRITE_PTR] = command_counter
-
+			
 			if msg_command_id == COMMAND_ID_MOVEL:
 				params = socket_read_binary_integer(6 + 4)
 				BUFFER_POSE[WRITE_PTR] = p[params[1]/(MM2M*MULT), params[2]/(MM2M*MULT), params[3]/(MM2M*MULT), params[4]/MULT, params[5]/MULT, params[6]/MULT]

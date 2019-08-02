@@ -66,6 +66,9 @@ class ClientWrapper(object):
     def wait_for_float_list(self):
         return self.wait_for_message(MSG_FLOAT_LIST)
 
+    def wait_for_int_list(self):
+        return self.wait_for_message(MSG_INT_LIST)
+
     def wait_for_int(self):
         # still needs to be implemented
         return self.wait_for_message(MSG_INT)
@@ -93,6 +96,10 @@ class ClientWrapper(object):
         msg = self.wait_for_message(MSG_ANALOG_IN)
         print(msg)
         return msg[number] # TODO:CHECK!!
+
+    def get_current_pose_joint(self):
+        msg = self.wait_for_message(MSG_CURRENT_POSE_JOINT)
+        return msg
 
     def send(self, msg_id, msg=None):
         container.CONNECTED_CLIENTS.put(self.identifier, [EXECUTING, 0])
@@ -125,8 +132,8 @@ class ClientWrapper(object):
     def send_command_tcp(self, tcp):
         self.send_command(COMMAND_ID_TCP, tcp)
 
-    def send_command_popup(self):
-        self.send_command(COMMAND_ID_POPUP, None)
+    def send_command_popup(self, title='', message='', blocking=False):
+        self.send_command(COMMAND_ID_POPUP, [title, message, blocking])
 
     def quit(self):
         self.send(MSG_QUIT)

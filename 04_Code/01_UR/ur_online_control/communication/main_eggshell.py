@@ -9,7 +9,7 @@ import sys
 import os
 
 # set the paths to find library
-file_dir = os.path.dirname( __file__)
+file_dir = os.path.dirname(__file__)
 parent_dir = os.path.abspath(os.path.join(file_dir, "..", ".."))
 sys.path.append(file_dir)
 sys.path.append(parent_dir)
@@ -63,16 +63,19 @@ def main():
         print("3: safe in pose")
         x, y, z, ax, ay, az, speed, acc = safety_pose_cmd
         ur.send_command_movel([x, y, z, ax, ay, az], v=speed, a=acc)
-        ur.send_command_wait(1.0)
+        # ur.send_command_wait(1.0)
+
+        ur.wait_for_ready()
+        ur.send_command_popup(title='hello!', message='Press ok when you are ready!', blocking=True)
+        ur.wait_for_ready()
 
         #turn on motor and extruder
         ur.send_command_digital_out(4, True)
         ur.send_command_digital_out(5, True)
-        ur.send_command_wait(10.0)
 
-        # ur.wait_for_ready()
-        # ur.send_command_popup(title='hello!', message='Press ok when you are ready!', blocking=True)
-        # ur.wait_for_ready()
+        ur.wait_for_ready()
+        ur.send_command_popup(title='hello!', message='Press ok when you are ready!', blocking=True)
+        ur.wait_for_ready()
 
         len_command = gh.wait_for_int() #4 client.send(MSG_INT, len_command)
         print ("4: len command list")
@@ -88,15 +91,15 @@ def main():
         for i in range(0, len(commands)):
 
             printing_cmd = commands[i]
-            x, y, z, ax, ay, az, speed, radius = printing_cmd
-            ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
+            x, y, z, ax, ay, az, acc, speed, radius = printing_cmd
+            ur.send_command_movel([x, y, z, ax, ay, az], a=acc, v=speed, r=radius)
 
         ### Safe Pose ###
         safety_pose_cmd = gh.wait_for_float_list() #6 client.send(MSG_FLOAT_LIST, safe_out_pose_cmd)
         print ("6: safe out pose")
         x, y, z, ax, ay, az, speed, acc = safety_pose_cmd
         ur.send_command_movel([x, y, z, ax, ay, az], v=speed, a=acc)
-        ur.send_command_wait(0.5)
+        ur.send_command_wait(5.0)
 
         # turn off motor and extruder
         ur.send_command_digital_out(4, False)

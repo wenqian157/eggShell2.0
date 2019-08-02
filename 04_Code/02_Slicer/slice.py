@@ -11,13 +11,11 @@ class Slice():
     """This class slices a mesh
     """
 
-    def __init__(self, layer_height, continuous_shell,
-        shift_curve_start, fix_self_intersections, smooth_curves):
+    def __init__(self, layer_height,
+        fix_self_intersections, smooth_curves):
 
         self.layer_height = layer_height
-        self.continuous_shell = continuous_shell
-        self.shift_curve_start = shift_curve_start
-        self.line_definition = layer_height*50
+        self.line_definition = layer_height*10
         self.intersection_buffer = 0.04
         self.fix_self_intersections_bool = fix_self_intersections
         self.smooth_curves_bool = smooth_curves
@@ -40,43 +38,101 @@ class Slice():
 
         self.contour_curves = self.fix_errors(self.contour_curves)
 
-        if self.continuous_shell:
-
-            self.regenerate_index, self.contour_curves = self.reconstruct_curves(self.contour_curves, self.layer_height)
-
-            self.contour_curves = self.del_doubles(self.contour_curves, self.layer_height)
-
-            self.seaming_points = self.align_seams(self.contour_curves, self.shift_curve_start)
-
-            self.match_curve_direction(self.contour_curves)
-
-            if len(self.regenerate_index) > 0:
-
-                self.contour_curves = self.regenerate_curves(self.contour_curves, self.regenerate_index)
-
-
-        elif self.fix_self_intersections_bool:
+        if self.fix_self_intersections_bool:
 
             self.contour_curves = self.fix_self_intersections(self.contour_curves, self.intersection_buffer, self.layer_height)
-
-            if self.continuous_shell:
-
-                self.seaming_points = self.align_seams(self.contour_curves, 0.08)
 
         elif self.smooth_curves_bool:
 
             self.contour_curves = self.smooth_curves(self.contour_curves, self.layer_height, 0.6)
 
-        else:
+        # else:
 
-            self.contour_curves, self.seaming_points = self.auto_align_seams(self.contour_curves)
+        self.contour_curves, self.seaming_points = self.auto_align_seams(self.contour_curves)
 
+        # self.contour_curves = self.shortest_path(self.contour_curves, self.layer_height)
 
         self.resampled_points = self.resample_points_by_count(self.contour_curves, self.line_definition)
 
-        self.resampled_points = self.del_very_close_points(self.resampled_points, self.layer_height)
+        # self.resampled_points = self.del_very_close_points(self.resampled_points, self.layer_height)
 
         return self.contour_curves, self.resampled_points, self.seaming_points
+
+
+    def shortest_path(self, curves, layer_height, max_branch_diff=25):
+
+        shortest_path_list = []
+        remaining_curves = []
+        len_curve_list = len(curves)
+        shortest_path_list.append(curves[0])
+
+        print "shortest"
+
+        # while True:
+        for r in range(10):
+
+            print "loop"
+
+            if len(shortest_path_list) == len_curve_list:
+
+                return shortest_path_list
+                break
+
+            count = 0
+
+            for i, c in enumerate(curves[1:]):
+
+                if count > max_branch_diff:
+
+                    print "break"
+                    break
+
+                else:
+
+                    dist_start_pt = self.two_d_distance(shortest_path_list[-1].PointAtStart, c.PointAtStart)
+
+                    if dist_start_pt < layer_height*2:
+
+                        shortest_path_list.append(c)
+                        count += 1
+
+                    else:
+
+                        remaining_curves.append(c)
+
+            curves = remaining_curves
+
+
+
+            # elif len(remaining_curves) > 0:
+            #
+            #     shortest_path_list.append(remaining_curves[0])
+            #
+            # remaining_curves = []
+            # count = 0
+            #
+            # print "else"
+            #
+            # for i, c in enumerate(curves[1:]):
+            #
+            #     if count > max_branch_diff:
+            #
+            #         print "break"
+            #         break
+            #
+            #     else:
+            #
+            #         dist_start_pt = self.two_d_distance(shortest_path_list[-1].PointAtStart, c.PointAtStart)
+            #
+            #         if dist_start_pt < layer_height*2:
+            #
+            #             shortest_path_list.append(c)
+            #             current_curves.pop(i)
+            #             count += 1
+            #
+            #         else:
+            #
+            #             remaining_curves.append(c)
 
 
     def fix_errors(self, curves):
@@ -150,6 +206,8 @@ class Slice():
                 dist = math.sqrt((x01-x02)**2 + (y01-y02)**2)
 
                 if abs(dist) <= layer_height/2:
+
+                    print "pop"
 
                     points.pop(i + 1)
 
@@ -655,30 +713,3 @@ class Slice():
                     break
 
         return c_trimed, int_bool
-
-
-    def align_seams(self, curves, shift_curve_start):
-
-        """aligns all seams of all curves
-        """
-
-        seaming_points = []
-
-        for c in curves:
-
-            c.Domain = rg.Interval(0, 1)
-
-            if len(seaming_points) == 0:
-
-                c.ChangeClosedCurveSeam(shift_curve_start)
-                c.Domain = rg.Interval(0, 1)
-                seaming_points.append(c.PointAt(0))
-
-            else:
-
-                _, v = c.ClosestPoint(seaming_points[-1])
-                c.ChangeClosedCurveSeam(v)
-                c.Domain = rg.Interval(0, 1)
-                seaming_points.append(c.PointAt(0))
-
-        return seaming_points
