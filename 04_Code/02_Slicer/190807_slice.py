@@ -28,32 +28,27 @@ class Slice():
 
         self.min_z, self.max_z = self.get_min_max_z(mesh)
 
-        self.start_contour, self.end_contour = self.define_start_end(self.min_z, self.max_z, True)
+        self.start_contour, self.end_contour = self.define_start_end(self.max_z, self.min_z, True)
 
         self.contour_curves = rg.Mesh.CreateContourCurves(mesh,
             rg.Point3d(0,0,self.start_contour),
             rg.Point3d(0,0,self.end_contour), self.layer_height)
 
-        self.seaming_points = []
-
         self.move_to_origin(self.contour_curves)
 
         self.contour_curves = self.fix_errors(self.contour_curves)
-
-        # _, self.contour_curves = self.reconstruct_curves(self.contour_curves, self.layer_height)
 
         if self.fix_self_intersections_bool:
 
             self.contour_curves = self.fix_self_intersections(self.contour_curves, self.intersection_buffer, self.layer_height)
 
-        if self.smooth_curves_bool:
+        elif self.smooth_curves_bool:
 
             self.contour_curves = self.smooth_curves(self.contour_curves, self.layer_height, 0.6)
 
         self.contour_curves, self.seaming_points, self.nested_c_list = self.auto_align_seams(self.contour_curves)
 
-        #
-        # self.contour_curves = self.shortest_path(self.contour_curves, self.nested_c_list)
+        self.contour_curves = self.shortest_path(self.contour_curves, self.nested_c_list)
 
         # self.resampled_points = self.resample_points_by_count(self.contour_curves, self.line_definition)
 
@@ -73,11 +68,18 @@ class Slice():
 
             num_curves = len(curves)
 
-            if max_branch_count < num_curves:
+            if max_branch_count<num_curves:
 
-                max_branch_count = num_curves
+                # max_branch_count=num_curves
+                max_branch_count = 1
+
+        # print max_branch_count
 
         while True:
+
+            # if self.contour_curves == len(shortest_path_list):
+            #
+            #     break
 
             if loop_end >= len(nested_curve_list)*self.layer_height:
 
@@ -89,12 +91,126 @@ class Slice():
 
                     if len(curves) > loop:
 
+                        # print loop
+                        # print len(curves)
+                        # print loop+i+loop_start
+                        # print curves[loop].PointAtStart.Z
                         shortest_path_list.append(curves[loop])
 
             loop_start += max_branch_diff
             loop_end += max_branch_diff
+            # print loop_end
+            # print len(nested_curve_list)
 
+        # print len(shortest_path_list)
+        # print len(self.contour_curves)
         return shortest_path_list
+
+        # for branch in range(max_branch_count):
+        #
+        #     if len(remaining_curves)
+        #
+        #     for i, curves in enumerate(nested_curve_list[loop_start:loop_end]):
+        #
+        #         num_curves = len(curves)
+        #
+        #         temp_list = []
+        #
+        #         for j, curve in enumerate(curves):
+        #
+        #             if j == 0:
+        #
+        #                 shortest_path_list.append(curve)
+        #
+        #             else:
+        #
+        #                 temp_list.append(curve)
+        #
+        #         remaining_curves.append(temp_list)
+        #
+        #     if i < max_branch_count-1:
+        #
+        #         break
+        #
+        #     if loop_end > len(nested_curve_list)*self.layer_height:
+        #
+        #         break
+        #
+        #     for i, curves in enumerate(nested_curve_list[loop_start:loop_end]):
+        #
+        #         num_curves = len(curves)
+        #
+        #         for j, curve in enumerate(curves):
+        #
+        #             shortest_path_list.append(curve)
+        #             curves.pop(j)
+        #             break
+        #
+        #     loop_start += max_branch_diff
+        #     loop_end += max_branch_diff
+        #
+        # return shortest_path_list
+
+            # if len(shortest_path_list) == len_curve_list:
+            #
+            #     return shortest_path_list
+            #     break
+            #
+            # count = 0
+            #
+            # for i, c in enumerate(curves[1:]):
+            #
+            #     if count > max_branch_diff:
+            #
+            #         print "break"
+            #         break
+            #
+            #     else:
+            #
+            #         dist_start_pt = self.two_d_distance(shortest_path_list[-1].PointAtStart, c.PointAtStart)
+            #
+            #         if dist_start_pt < layer_height*2:
+            #
+            #             shortest_path_list.append(c)
+            #             count += 1
+            #
+            #         else:
+            #
+            #             remaining_curves.append(c)
+            #
+            # curves = remaining_curves
+
+
+
+            # elif len(remaining_curves) > 0:
+            #
+            #     shortest_path_list.append(remaining_curves[0])
+            #
+            # remaining_curves = []
+            # count = 0
+            #
+            # print "else"
+            #
+            # for i, c in enumerate(curves[1:]):
+            #
+            #     if count > max_branch_diff:
+            #
+            #         print "break"
+            #         break
+            #
+            #     else:
+            #
+            #         dist_start_pt = self.two_d_distance(shortest_path_list[-1].PointAtStart, c.PointAtStart)
+            #
+            #         if dist_start_pt < layer_height*2:
+            #
+            #             shortest_path_list.append(c)
+            #             current_curves.pop(i)
+            #             count += 1
+            #
+            #         else:
+            #
+            #             remaining_curves.append(c)
 
 
     def fix_errors(self, curves):
@@ -176,6 +292,34 @@ class Slice():
         return points
 
 
+    # def resample_points_by_count(self, curves, line_definition):
+    #
+    #     """resamples the curve by count of points
+    #     """
+    #
+    #     resampled_points = []
+    #
+    #     for c in curves:
+    #
+    #         temp_list = []
+    #
+    #         length = c.GetLength()
+    #         points_per_curve = int(round(length/line_definition))
+    #
+    #         divisions = c.DivideByCount(points_per_curve, True)
+    #         points = [c.PointAt(d) for d in divisions]
+    #
+    #         points.append(points[0])
+    #
+    #         for p in points:
+    #
+    #             temp_list.append(p)
+    #
+    #         resampled_points.append(temp_list)
+    #
+    #     return resampled_points
+
+
     def resample_points_by_count(self, curve, line_definition, append_point_0=True):
 
         """resamples the curve by count of points
@@ -226,7 +370,6 @@ class Slice():
             if len(list) > 1 and i != 0:
 
                 min_length = 9999999999
-                curve_dict = {}
 
                 for j, curve in enumerate(list):
 
@@ -257,33 +400,28 @@ class Slice():
         seaming_points = []
         aligned_curves = []
 
-        for curves in nested_curve_list:
-            for c in curves:
+        for i, curve_list in enumerate(nested_curve_list):
+
+            center_point = self.get_center_of_curves(curve_list)
+
+            for j, c in enumerate(curve_list):
+
+                c.Domain = rg.Interval(0, 1)
+
+                if len(curve_list) == 1 and len(seaming_points) > 0:
+
+                    closest_seam_point = seaming_points[0]
+                    _, v = c.ClosestPoint(closest_seam_point)
+
+                else:
+
+                    _, v = c.ClosestPoint(center_point)
+
+                c.ChangeClosedCurveSeam(v)
+                seaming_points.append(c.PointAt(v))
                 aligned_curves.append(c)
 
-        # for i, curve_list in enumerate(nested_curve_list):
-        #
-        #     center_point = self.get_center_of_curves(curve_list)
-        #
-        #     for j, c in enumerate(curve_list):
-        #
-        #         closed = c.MakeClosed(self.layer_height*10)
-        #         c.Domain = rg.Interval(0, 1)
-        #
-        #         if len(curve_list) == 1 and len(seaming_points) > 0:
-        #
-        #             closest_seam_point = seaming_points[0]
-        #             _, v = c.ClosestPoint(closest_seam_point)
-        #
-        #         else:
-        #
-        #             _, v = c.ClosestPoint(center_point)
-        #
-        #         seam_success = c.ChangeClosedCurveSeam(v)
-        #         seaming_points.append(c.PointAt(v))
-        #         aligned_curves.append(c)
-        #
-        # nested_curve_list = self.arrange_curves(nested_curve_list)
+        nested_curve_list = self.arrange_curves(nested_curve_list)
 
         return aligned_curves, seaming_points, nested_curve_list
 
@@ -470,6 +608,58 @@ class Slice():
         return regenerate_index, reconst_curves
 
 
+    # def reorganize_by_height(self, curves, layer_height):
+    #
+    #     """reorganizes a list of curves into lists with the same height
+    #     """
+    #
+    #     step = 0
+    #
+    #     nested_c_list = []
+    #
+    #     for h in range(int(curves[-1].PointAtStart.Z/layer_height)+1):
+    #
+    #         c_list = []
+    #
+    #         for i, c in enumerate(curves[step:]):
+    #
+    #             z_value = c.PointAtStart.Z
+    #
+    #             height_bool = self.is_almost_equal(h * layer_height, z_value)
+    #
+    #             if height_bool:
+    #
+    #                 c_list.append(c)
+    #
+    #             else:
+    #
+    #                 step += len(c_list)
+    #                 break
+    #
+    #         nested_c_list.append(c_list)
+
+        # fixed_list = []
+        #
+        # for i, curves in enumerate(nested_c_list[1:]):
+        #
+        #     if len(curves) > 1 and len(nested_c_list[i-1]) > 1:
+        #
+        #         dist_curves = curves[0].PointAtStart.DistanceTo(nested_c_list[i-1][0].PointAtStart)
+        #
+        #         if dist_curves > self.layer_height:
+        #
+        #             curves = curves[1:]+curves[0:1]
+        #             fixed_list.append(curves)
+        #
+        #     else:
+        #
+        #             fixed_list.append(curves)
+        #
+        #     # for curve in curves:
+
+        return nested_c_list
+
+
     def reorganize_by_length(self, curves, layer_height):
 
         """reorganizes a list of curves into dictionaries with lengths as keys
@@ -513,7 +703,7 @@ class Slice():
     	return abs(x-y) <= epsilon
 
 
-    def define_start_end(self,  min_z, max_z, trim_top_bottom):
+    def define_start_end(self, max_z, min_z, trim_top_bottom):
 
         """defines de start and end of the mesh slicing in the z axis
         """

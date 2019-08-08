@@ -9,7 +9,7 @@ class ImportTxt():
 
     def get_points(self):
 
-        self.points = []
+        WCS_list = []
 
         with open(self.file_path, "r") as f:
 
@@ -18,7 +18,14 @@ class ImportTxt():
                 data = line[line.find("[")+1 : line.find("]")].rstrip().split(',')
 
                 point = rg.Point3d(float(data[0]), float(data[1]), float(data[2]))
+                vector_x = rg.Vector3d(float(data[3]), float(data[4]), float(data[5]))
+                vector_y = rg.Vector3d(float(data[6]), float(data[7]), float(data[8]))
+                speed = int(data[9])
+                radius = float(data[10])
+                extrude = int(data[11])
 
-                self.points.append(point)
+                WCS = [point, vector_x, vector_y, speed, radius, extrude]
 
-        return self.points
+                WCS_list.append(WCS)
+
+        return WCS_list
