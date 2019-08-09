@@ -28,7 +28,7 @@ class Slice():
 
         self.min_z, self.max_z = self.get_min_max_z(mesh)
 
-        self.start_contour, self.end_contour = self.define_start_end(self.min_z, self.max_z, True)
+        self.start_contour, self.end_contour = self.define_start_end(365, 410, True)
 
         self.contour_curves = rg.Mesh.CreateContourCurves(mesh,
             rg.Point3d(0,0,self.start_contour),
@@ -40,29 +40,14 @@ class Slice():
 
         self.contour_curves = self.fix_errors(self.contour_curves)
 
-        # _, self.contour_curves = self.reconstruct_curves(self.contour_curves, self.layer_height)
-
-        if self.fix_self_intersections_bool:
-
-            self.contour_curves = self.fix_self_intersections(self.contour_curves, self.intersection_buffer, self.layer_height)
-
-        if self.smooth_curves_bool:
-
-            self.contour_curves = self.smooth_curves(self.contour_curves, self.layer_height, 0.6)
-
         self.contour_curves, self.seaming_points, self.nested_c_list = self.auto_align_seams(self.contour_curves)
 
-        #
-        # self.contour_curves = self.shortest_path(self.contour_curves, self.nested_c_list)
-
-        # self.resampled_points = self.resample_points_by_count(self.contour_curves, self.line_definition)
-
-        # self.resampled_points = self.del_very_close_points(self.resampled_points, self.layer_height)
+        self.contour_curves = self.shortest_path(self.contour_curves, self.nested_c_list)
 
         return self.contour_curves, self.seaming_points
 
 
-    def shortest_path(self, curves, nested_curve_list, max_branch_diff=25):
+    def shortest_path(self, curves, nested_curve_list, max_branch_diff=15):
 
         shortest_path_list = []
         loop_start = 0
@@ -115,7 +100,7 @@ class Slice():
 
             c_length = c.GetLength()
 
-            if c_length > avg_length/3:
+            if c_length > avg_length/10:
 
                 fixed_curves.append(c)
 
@@ -146,52 +131,6 @@ class Slice():
                 max_z = p.Z
 
         return min_z, max_z
-
-
-    def del_very_close_points(self, points, layer_height):
-
-        """deletes very close points that could cause an abnormal robot behaviour
-        """
-
-        for i in range(0, len(points) - 1):
-
-            if (i+1) < len(points):
-
-                dist_bool = False
-
-                x01 = points[i].X
-                x02 = points[i + 1].X
-
-                y01 = points[i].Y
-                y02 = points[i + 1].Y
-
-                dist = math.sqrt((x01-x02)**2 + (y01-y02)**2)
-
-                if abs(dist) <= layer_height/2:
-
-                    print "pop"
-
-                    points.pop(i + 1)
-
-        return points
-
-
-    def resample_points_by_count(self, curve, line_definition, append_point_0=True):
-
-        """resamples the curve by count of points
-        """
-
-        length = curve.GetLength()
-        points_per_curve = int(round(length/line_definition))
-
-        divisions = curve.DivideByCount(points_per_curve, True)
-        points = [curve.PointAt(d) for d in divisions]
-
-        if append_point_0:
-
-            points.append(points[0])
-
-        return points
 
 
     def reorganize_by_height(self, curve_list):
@@ -261,29 +200,29 @@ class Slice():
             for c in curves:
                 aligned_curves.append(c)
 
-        # for i, curve_list in enumerate(nested_curve_list):
-        #
-        #     center_point = self.get_center_of_curves(curve_list)
-        #
-        #     for j, c in enumerate(curve_list):
-        #
-        #         closed = c.MakeClosed(self.layer_height*10)
-        #         c.Domain = rg.Interval(0, 1)
-        #
-        #         if len(curve_list) == 1 and len(seaming_points) > 0:
-        #
-        #             closest_seam_point = seaming_points[0]
-        #             _, v = c.ClosestPoint(closest_seam_point)
-        #
-        #         else:
-        #
-        #             _, v = c.ClosestPoint(center_point)
-        #
-        #         seam_success = c.ChangeClosedCurveSeam(v)
-        #         seaming_points.append(c.PointAt(v))
-        #         aligned_curves.append(c)
-        #
-        # nested_curve_list = self.arrange_curves(nested_curve_list)
+        for i, curve_list in enumerate(nested_curve_list):
+
+            center_point = self.get_center_of_curves(curve_list)
+
+            for j, c in enumerate(curve_list):
+
+                closed = c.MakeClosed(self.layer_height*10)
+                c.Domain = rg.Interval(0, 1)
+
+                if len(curve_list) == 1 and len(seaming_points) > 0:
+
+                    closest_seam_point = seaming_points[0]
+                    _, v = c.ClosestPoint(closest_seam_point)
+
+                else:
+
+                    _, v = c.ClosestPoint(center_point)
+
+                seam_success = c.ChangeClosedCurveSeam(v)
+                seaming_points.append(c.PointAt(v))
+                aligned_curves.append(c)
+
+        nested_curve_list = self.arrange_curves(nested_curve_list)
 
         return aligned_curves, seaming_points, nested_curve_list
 
@@ -321,27 +260,6 @@ class Slice():
         return avrg_p
 
 
-    def resample_points_by_length(self, curves, length):
-
-        """resamples the curve by count of points
-        """
-
-        resampled_points = []
-
-        for c in curves:
-
-            divisions = c.DivideByLength(length, True)
-            points = [c.PointAt(d) for d in divisions]
-
-            for p in points:
-
-                resampled_points.append(p)
-
-            resampled_points.append(points[0])
-
-        return resampled_points
-
-
     def match_curve_direction(self, curves):
 
         """matches all curves directions
@@ -357,151 +275,6 @@ class Slice():
             if vector_angle > math.pi/4:
 
                 curves[i+1].Reverse()
-
-
-    def regenerate_curves(self, curves, regenerate_index):
-
-        """regenerates missing curves caused by inconsistencies in the mesh
-        """
-
-        regenerate_dict = self.get_regenerate_dict(regenerate_index)
-
-        # print regenerate_dict
-
-        regenerated_curves = curves
-
-        step = 0
-
-        for i, index in enumerate(regenerate_dict):
-
-            if i == step:
-
-                mean_dict = {}
-
-                tween_curves = rg.Curve.CreateTweenCurvesWithMatching(curves[index-1],
-                    curves[index], regenerate_dict[index]+1)
-
-                for t in tween_curves[::-1]:
-
-                    regenerated_curves.insert(index, t)
-
-                step += (regenerate_dict[index]+1)
-
-        return regenerated_curves
-
-
-    def get_regenerate_dict(self, regenerate_index):
-
-        """regenerates the curve dictionary
-        """
-
-        regenerate_dict = {}
-
-        factor = 0
-
-        for i, index in enumerate(regenerate_index[::-1]):
-
-            try:
-
-                if abs(index - regenerate_index[-i]) == 1:
-
-                    factor += 1
-
-                else:
-
-                    factor = 0
-
-            except:
-
-                factor = 0
-
-            regenerate_dict[index] = factor
-
-        sorted_regenerate_dict = collections.OrderedDict(sorted(regenerate_dict.items()))
-
-        return sorted_regenerate_dict
-
-
-    def reconstruct_curves(self, curves, layer_height):
-
-        """reconstructs curves on the same height to form closed curves
-        """
-
-        regenerate_index = []
-
-        reconst_curves = []
-
-        nested_c_list = self.reorganize_by_height(curves)
-
-        for i, c_list in enumerate(nested_c_list):
-
-            if len(c_list) == 1:
-
-                for c in c_list:
-
-                    closed = c.MakeClosed(layer_height*2)
-                    reconst_curves.append(c)
-
-            else:
-
-                reconst_c = rg.Curve.JoinCurves(c_list, layer_height*2)
-
-                if len(reconst_c) == 1:
-
-                    reconst_curves.append(reconst_c[0])
-
-                elif len(reconst_c) == len(c_list):
-
-                    for c in c_list:
-
-                        try:
-
-                            closed = c.MakeClosed(layer_height*2)
-                            reconst_curves.append(c)
-
-                        except:
-
-                            continue
-
-                else:
-
-                    regenerate_index.append(i)
-
-        return regenerate_index, reconst_curves
-
-
-    def reorganize_by_length(self, curves, layer_height):
-
-        """reorganizes a list of curves into dictionaries with lengths as keys
-        """
-
-        step = 0
-
-        nested_c_list = []
-
-        for h in range(int(curves[-1].PointAtStart.Z/layer_height)+1):
-
-            c_dict = {}
-
-            for i, c in enumerate(curves[step:]):
-
-                z_value = c.PointAtStart.Z
-
-                height_bool = self.is_almost_equal(h * layer_height, z_value)
-
-                if height_bool:
-
-                    c_length = c.GetLength()
-                    c_dict[c_length] = c
-
-                else:
-
-                    step += len(c_dict)
-                    break
-
-            nested_c_list.append(c_dict)
-
-        return nested_c_list
 
 
     def is_almost_equal(self, x ,y ,epsilon=1*10**(-8)):
@@ -548,129 +321,3 @@ class Slice():
         for n in curves:
 
             n.Transform(target_transform)
-
-
-    def del_doubles(self, curves, layer_height):
-
-        single_curves = []
-
-        nested_c_list = self.reorganize_by_length(curves, layer_height)
-
-        for c_dict in nested_c_list:
-
-            try:
-
-                sorted_c_dict = collections.OrderedDict(sorted(c_dict.items()))
-
-                c = sorted_c_dict[sorted_c_dict.keys()[-1]]
-
-                c.MakeClosed(layer_height*2)
-
-                single_curves.append(c)
-
-            except:
-
-                continue
-
-        return single_curves
-
-
-    def smooth_curves(self, curves, layer_height, smoothing_factor):
-
-        """ smoothens a curve
-        """
-        new_curves = []
-
-        success_bool = False
-
-        for c in curves:
-
-            if c:
-
-                try:
-
-                    c = c.Smooth(smoothing_factor, True, True, False, False, 0)
-                    c.MakeClosed(layer_height*2)
-                    new_curves.append(c)
-                    success_bool = True
-
-                except:
-
-                    success_bool = False
-                    break
-
-        if success_bool:
-
-            return new_curves
-
-        else:
-
-            return curves
-
-
-    def fix_self_intersections(self, curves, trim_threshold, layer_height):
-
-        """ fixes self intersetions in curves
-        """
-        fixed_curves = []
-
-        for c in curves:
-
-            int_events = rg.Intersect.Intersection.CurveSelf(c, 0.001)
-
-            c_trimed = c.Duplicate()
-
-            if int_events:
-
-                while True:
-
-                    c_trimed, int_bool = self.trim_curve(int_events, c_trimed, trim_threshold, layer_height)
-
-                    if int_bool:
-
-                        int_events = rg.Intersect.Intersection.CurveSelf(c_trimed, 0.001)
-
-                    else:
-
-                        break
-
-                fixed_curves.append(c_trimed)
-
-            else:
-
-                fixed_curves.append(c_trimed)
-
-        return fixed_curves
-
-
-    def trim_curve(self, int_events, c_trimed, trim_threshold, layer_height):
-
-        """trims a curve based on self intersections
-        """
-
-        int_bool = False
-
-        for int in int_events:
-
-            parA = int.ParameterA
-            # print parA
-            parB = int.ParameterB
-            # print parB
-
-            if abs(parA - parB) < trim_threshold:
-
-                int_bool = True
-
-                try:
-
-                    c_trimed = c_trimed.Trim(parB, parA)
-                    c_trimed.MakeClosed(layer_height*2)
-                    break
-
-                except:
-
-                    self.trim_error = True
-                    print "trim error"
-                    break
-
-        return c_trimed, int_bool

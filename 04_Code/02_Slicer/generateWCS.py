@@ -24,55 +24,109 @@ class GenerateWCS():
         vector_y = rg.Vector3d(0,1,0)
         WCS_list = []
         point_list = []
+        extrude = 1
 
-        nested_curve_list = self.reorganize_by_height(curve_list)
+        for i, curve in enumerate(curve_list):
 
-        for i, curve_list in enumerate(nested_curve_list):
+            if i != len(curve_list)-1:
 
-            if len(curve_list) < 2:
+                dist_start = self.two_d_distance(curve.PointAtStart, curve_list[i+1].PointAtStart)
 
-                append_point_0 = False
+                if dist_start > self.line_definition:
+
+                    append_point_0 = True
+
+                else:
+
+                    append_point_0 = False
 
             else:
 
                 append_point_0 = True
 
-            for j, curve in enumerate(curve_list):
+            points = self.resample_points_by_count(curve,
+                self.line_definition, append_point_0)
 
-                points = self.resample_points_by_count(curve, self.line_definition, append_point_0)
+            for p in points:
 
-                for k, p in enumerate(points):
+                point_list.append(p)
 
-                    if len(curve_list)>2 and k==0:
+        for i, p in enumerate(point_list):
 
-                        speed = self.fast_speed
-                        radius = 0
-                        extrude = 0
+            if i==0 or i==len(point_list)-1:
 
-                    elif len(curve_list)>2 and k==len(points)-1:
+                radius = 0
 
-                        speed = self.normal_speed
-                        radius = 0
-                        extrude = 0
+            else:
 
-                    elif k!=0 and k!=len(points)-1:
+                radius, max_length = self.calc_blend_radius(p,
+                    point_list[i-1], point_list[i+1])
 
-                        speed = self.normal_speed
-                        radius = self.calc_blend_radius(p, points[k-1], points[k+1])
-                        extrude = 1
+                if max_length > self.line_definition*2:
 
-                    else:
+                    radius = 0
 
-                        speed = self.normal_speed
-                        radius = 0
-                        extrude = 1
+            temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
+                vector_y.X, vector_y.Y, vector_y.Z, self.normal_speed, radius, extrude]
+            WCS_list.append(temp_list)
 
-                    temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
-                        vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
-                    point_list.append(p)
-                    WCS_list.append(temp_list)
+
+
+        # nested_curve_list = self.reorganize_by_height(curve_list)
+        #
+        # for i, curve_list in enumerate(nested_curve_list):
+        #
+        #     if len(curve_list) < 2:
+        #
+        #         append_point_0 = False
+        #
+        #     else:
+        #
+        #         append_point_0 = True
+        #
+        #     for j, curve in enumerate(curve_list):
+        #
+        #         points = self.resample_points_by_count(curve, self.line_definition, append_point_0)
+        #
+        #         for k, p in enumerate(points):
+        #
+        #             if len(curve_list)>2 and k==0:
+        #
+        #                 speed = self.fast_speed
+        #                 radius = 0
+        #                 extrude = 0
+        #
+        #             elif len(curve_list)>2 and k==len(points)-1:
+        #
+        #                 speed = self.normal_speed
+        #                 radius = 0
+        #                 extrude = 0
+        #
+        #             elif k!=0 and k!=len(points)-1:
+        #
+        #                 speed = self.normal_speed
+        #                 radius = self.calc_blend_radius(p, points[k-1], points[k+1])
+        #                 extrude = 1
+        #
+        #             else:
+        #
+        #                 speed = self.normal_speed
+        #                 radius = 0
+        #                 extrude = 1
+                    #
+                    # temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
+                    #     vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
+                    # point_list.append(p)
+                    # WCS_list.append(temp_list)
 
         return WCS_list, point_list
+
+
+    def two_d_distance(self, point01, point02):
+
+        dist = math.sqrt((point01.X - point02.X)**2 + (point01.Y - point02.Y)**2)
+
+        return dist
 
 
     def calc_blend_radius(self, current_point, prev_point, next_point, dfillet=20, buffer=0.7):
@@ -80,7 +134,10 @@ class GenerateWCS():
         radius = min((prev_point - current_point).Length/2 * buffer,
             (next_point - current_point).Length/2 * buffer, dfillet)
 
-        return radius
+        max_length = max((prev_point - current_point).Length/2,
+            (next_point - current_point).Length/2)
+
+        return radius, max_length
 
 
     def reorganize_by_height(self, curve_list):
