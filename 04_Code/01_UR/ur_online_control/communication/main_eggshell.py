@@ -94,7 +94,7 @@ def main():
 
             printing_cmd = commands[i]
             x, y, z, ax, ay, az, speed, radius = printing_cmd
-            ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
+            ur.send_command_movel([x, y, z, ax, ay, az], a=acc, v=speed, r=radius)
 
         ### Safe Pose ###
         safety_pose_cmd = gh.wait_for_float_list() #6 client.send(MSG_FLOAT_LIST, safe_out_pose_cmd)
