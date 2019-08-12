@@ -20,8 +20,8 @@ class GenerateWCS():
 
     def generate_WCS_list(self, curve_list):
 
-        vector_x = rg.Vector3d(1,0,0)
-        vector_y = rg.Vector3d(0,1,0)
+        vector_x = rg.Vector3d(1.0,0.0,0.0)
+        vector_y = rg.Vector3d(0.0,1.0,0.0)
         WCS_list = []
         point_list = []
         extrude = 1
@@ -53,23 +53,39 @@ class GenerateWCS():
 
         for i, p in enumerate(point_list):
 
-            if i==0 or i==len(point_list)-1:
+            if i != len(point_list)-1:
 
+                dist = p.DistanceTo(point_list[i+1])
+
+        safety_point = False
+
+        for i, p in enumerate(point_list):
+
+            safety_point = False
+
+            if i==0 or i==len(point_list)-1:
                 radius = 0
 
             else:
-
                 radius, max_length = self.calc_blend_radius(p,
                     point_list[i-1], point_list[i+1])
 
                 if max_length > self.line_definition*2:
-
                     radius = 0
+
+                dist = p.DistanceTo(point_list[i+1])
+
+                if dist > self.line_definition*2:
+                    safety_point = [point_list[i+1].X, point_list[i+1].Y, p.Z+1,
+                        vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y, vector_y.Z,
+                        self.normal_speed, 0, 0]
 
             temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
                 vector_y.X, vector_y.Y, vector_y.Z, self.normal_speed, radius, extrude]
             WCS_list.append(temp_list)
 
+            if safety_point:
+                WCS_list.append(safety_point)
 
 
         # nested_curve_list = self.reorganize_by_height(curve_list)
@@ -118,6 +134,56 @@ class GenerateWCS():
                     #     vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
                     # point_list.append(p)
                     # WCS_list.append(temp_list)
+
+        point_list = [rg.Point3d(WCS[0], WCS[1], WCS[2]) for WCS in WCS_list]
+
+        return WCS_list, point_list
+
+
+    def generate_WCS_list_points(self, point_list):
+
+        vector_x = rg.Vector3d(1.0,0.0,0.0)
+        vector_y = rg.Vector3d(0.0,1.0,0.0)
+        WCS_list = []
+        extrude = 1
+
+        for i, p in enumerate(point_list):
+
+            if i != len(point_list)-1:
+
+                dist = p.DistanceTo(point_list[i+1])
+
+        safety_point = False
+
+        for i, p in enumerate(point_list):
+
+            safety_point = False
+
+            if i==0 or i==len(point_list)-1:
+                radius = 0
+
+            else:
+                radius, max_length = self.calc_blend_radius(p,
+                    point_list[i-1], point_list[i+1])
+
+                if max_length > self.line_definition*2:
+                    radius = 0
+
+                dist = p.DistanceTo(point_list[i+1])
+
+                if dist > self.line_definition*2:
+                    safety_point = [point_list[i+1].X, point_list[i+1].Y, p.Z+1,
+                        vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y, vector_y.Z,
+                        self.normal_speed, 0, 0]
+
+            temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
+                vector_y.X, vector_y.Y, vector_y.Z, self.normal_speed, radius, extrude]
+            WCS_list.append(temp_list)
+
+            if safety_point:
+                WCS_list.append(safety_point)
+
+        point_list = [rg.Point3d(WCS[0], WCS[1], WCS[2]) for WCS in WCS_list]
 
         return WCS_list, point_list
 
@@ -171,7 +237,11 @@ class GenerateWCS():
         length = curve.GetLength()
         points_per_curve = int(round(length/line_definition))
 
+        # print type(curve)
+
         divisions = curve.DivideByCount(points_per_curve, True)
+        # print divisions
+
         points = [curve.PointAt(d) for d in divisions]
 
         if append_point_0:

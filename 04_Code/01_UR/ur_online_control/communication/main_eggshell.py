@@ -93,8 +93,22 @@ def main():
         for i in range(0, len(commands)):
 
             printing_cmd = commands[i]
-            x, y, z, ax, ay, az, speed, radius = printing_cmd
-            ur.send_command_movel([x, y, z, ax, ay, az], a=acc, v=speed, r=radius)
+            x, y, z, ax, ay, az, speed, radius, extrude_bool = printing_cmd
+
+            # if extrude_bool == 0:
+            #     ur.send_command_digital_out(4, False)
+            #     ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
+            #     ur.send_command_wait(0.1)
+            #     ur.send_command_digital_out(4, True)
+            #
+            # else:
+
+            ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
+
+        for i, cmd in enumerate(commands):
+            ur.wait_for_command_executed(i)
+            print("Executed command", i+1)
+            print(cmd)
 
         ### Safe Pose ###
         safety_pose_cmd = gh.wait_for_float_list() #6 client.send(MSG_FLOAT_LIST, safe_out_pose_cmd)
