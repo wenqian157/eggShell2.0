@@ -40,7 +40,7 @@ class ImportObj():
 
         """rotate meshes
         """
-        self.mesh.Rotate(angle, rg.Vector3d(1,0,0), rg.Point3d(0,0,0))
+        self.mesh.Rotate(angle, rg.Vector3d(0,1,0), rg.Point3d(0,0,0))
 
     def scale_mesh(self):
 

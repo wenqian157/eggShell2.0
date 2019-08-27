@@ -4,257 +4,212 @@ import Rhino.Geometry as rg
 import scriptcontext as sc
 import math
 import collections
+import sliceCurve
+reload(sliceCurve)
+from sliceCurve import SliceCurve
 
 class GenerateWCS():
-
     """This class generates WCS frames for UR
     """
+    def __init__(self, layer_height, line_definition,
+        normal_speed, fast_speed, tcp_bool=True):
 
-    def __init__(self, line_definition, normal_speed,
-        fast_speed):
-
+        self.layer_height = layer_height
         self.line_definition = line_definition
         self.normal_speed = normal_speed
         self.fast_speed = fast_speed
+        self.tcp_bool = tcp_bool
 
 
-    def generate_WCS_list(self, curve_list):
+    def generate_WCS_frames(self, slice_curves):
+        """generates WCS frames
+        """
+        tcp_frames = self.construct_tcp_frames(slice_curves)
+        # self.normals_list = self.tcp_normals(nested_curve_list, self.line_definition)
+        # self.tcp_frames = self.spiral(self.tcp_frames, self.layer_height)
 
-        vector_x = rg.Vector3d(1.0,0.0,0.0)
-        vector_y = rg.Vector3d(0.0,1.0,0.0)
         WCS_list = []
-        point_list = []
         extrude = 1
 
-        for i, curve in enumerate(curve_list):
+        for i, f in enumerate(tcp_frames):
 
-            if i != len(curve_list)-1:
-
-                dist_start = self.two_d_distance(curve.PointAtStart, curve_list[i+1].PointAtStart)
-
-                if dist_start > self.line_definition:
-
-                    append_point_0 = True
-
-                else:
-
-                    append_point_0 = False
-
-            else:
-
-                append_point_0 = True
-
-            points = self.resample_points_by_count(curve,
-                self.line_definition, append_point_0)
-
-            for p in points:
-
-                point_list.append(p)
-
-        for i, p in enumerate(point_list):
-
-            if i != len(point_list)-1:
-
-                dist = p.DistanceTo(point_list[i+1])
-
-        safety_point = False
-
-        for i, p in enumerate(point_list):
-
+            speed = self.normal_speed
+            vector_x = f.XAxis
+            vector_y = f.YAxis
+            p = f.Origin
             safety_point = False
 
-            if i==0 or i==len(point_list)-1:
-                radius = 0
-
+            if i==0 or i==len(tcp_frames)-1: radius = 0
             else:
                 radius, max_length = self.calc_blend_radius(p,
-                    point_list[i-1], point_list[i+1])
+                tcp_frames[i-1].Origin, tcp_frames[i+1].Origin)
 
                 if max_length > self.line_definition*2:
                     radius = 0
-
-                dist = p.DistanceTo(point_list[i+1])
-
-                if dist > self.line_definition*2:
-                    safety_point = [point_list[i+1].X, point_list[i+1].Y, p.Z+1,
-                        vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y, vector_y.Z,
+                    safety_point = True
+                    safety_point01 = [p.X, p.Y, p.Z+self.line_definition, vector_x.X, vector_x.Y,
+                        vector_x.Z, vector_y.X, vector_y.Y, vector_y.Z,
                         self.normal_speed, 0, 0]
+                    safety_point02 = [tcp_frames[i+1].Origin.X, tcp_frames[i+1].Origin.Y,
+                        p.Z+1, vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y,
+                        vector_y.Z, self.normal_speed, 0, 0]
+
+                # dist = p.Z - tcp_frames[i+1].Z
+                #
+                # if dist > self.line_definition*2: safety_point = [point_list[i+1].X, point_list[i+1].Y,
+                #     p.Z+1, vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y,
+                #     vector_y.Z, self.normal_speed, 0, 0]
 
             temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
-                vector_y.X, vector_y.Y, vector_y.Z, self.normal_speed, radius, extrude]
+                vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
             WCS_list.append(temp_list)
 
-            if safety_point:
-                WCS_list.append(safety_point)
-
-
-        # nested_curve_list = self.reorganize_by_height(curve_list)
-        #
-        # for i, curve_list in enumerate(nested_curve_list):
-        #
-        #     if len(curve_list) < 2:
-        #
-        #         append_point_0 = False
-        #
-        #     else:
-        #
-        #         append_point_0 = True
-        #
-        #     for j, curve in enumerate(curve_list):
-        #
-        #         points = self.resample_points_by_count(curve, self.line_definition, append_point_0)
-        #
-        #         for k, p in enumerate(points):
-        #
-        #             if len(curve_list)>2 and k==0:
-        #
-        #                 speed = self.fast_speed
-        #                 radius = 0
-        #                 extrude = 0
-        #
-        #             elif len(curve_list)>2 and k==len(points)-1:
-        #
-        #                 speed = self.normal_speed
-        #                 radius = 0
-        #                 extrude = 0
-        #
-        #             elif k!=0 and k!=len(points)-1:
-        #
-        #                 speed = self.normal_speed
-        #                 radius = self.calc_blend_radius(p, points[k-1], points[k+1])
-        #                 extrude = 1
-        #
-        #             else:
-        #
-        #                 speed = self.normal_speed
-        #                 radius = 0
-        #                 extrude = 1
-                    #
-                    # temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
-                    #     vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
-                    # point_list.append(p)
-                    # WCS_list.append(temp_list)
+            if safety_point: WCS_list.extend([safety_point01,safety_point02])
 
         point_list = [rg.Point3d(WCS[0], WCS[1], WCS[2]) for WCS in WCS_list]
 
         return WCS_list, point_list
 
 
-    def generate_WCS_list_points(self, point_list):
-
-        vector_x = rg.Vector3d(1.0,0.0,0.0)
-        vector_y = rg.Vector3d(0.0,1.0,0.0)
-        WCS_list = []
-        extrude = 1
-
-        for i, p in enumerate(point_list):
-
-            if i != len(point_list)-1:
-
-                dist = p.DistanceTo(point_list[i+1])
-
-        safety_point = False
-
-        for i, p in enumerate(point_list):
-
-            safety_point = False
-
-            if i==0 or i==len(point_list)-1:
-                radius = 0
-
-            else:
-                radius, max_length = self.calc_blend_radius(p,
-                    point_list[i-1], point_list[i+1])
-
-                if max_length > self.line_definition*2:
-                    radius = 0
-
-                dist = p.DistanceTo(point_list[i+1])
-
-                if dist > self.line_definition*2:
-                    safety_point = [point_list[i+1].X, point_list[i+1].Y, p.Z+1,
-                        vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y, vector_y.Z,
-                        self.normal_speed, 0, 0]
-
-            temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
-                vector_y.X, vector_y.Y, vector_y.Z, self.normal_speed, radius, extrude]
-            WCS_list.append(temp_list)
-
-            if safety_point:
-                WCS_list.append(safety_point)
-
-        point_list = [rg.Point3d(WCS[0], WCS[1], WCS[2]) for WCS in WCS_list]
-
-        return WCS_list, point_list
-
-
-    def two_d_distance(self, point01, point02):
-
-        dist = math.sqrt((point01.X - point02.X)**2 + (point01.Y - point02.Y)**2)
-
-        return dist
-
-
-    def calc_blend_radius(self, current_point, prev_point, next_point, dfillet=20, buffer=0.7):
-
+    def calc_blend_radius(self, current_point, prev_point,
+        next_point, dfillet=20, buffer=0.7):
+        """calculates blend radius of path
+        """
         radius = min((prev_point - current_point).Length/2 * buffer,
             (next_point - current_point).Length/2 * buffer, dfillet)
-
-        max_length = max((prev_point - current_point).Length/2,
-            (next_point - current_point).Length/2)
+        max_length = (next_point - current_point).Length/2
 
         return radius, max_length
 
 
-    def reorganize_by_height(self, curve_list):
+    def spiral(self, frames, layer_height):
+        """returns frames in a spiral
+        """
+        frames_per_layer = 0
 
-        temp_list = []
-        nested_list = []
+        for f in frames:
+            # if SliceCurve.is_almost_equal(f.OriginZ, 0):
+            if 0 < f.OriginZ < 0.1: frames_per_layer += 1
+            else: break
 
-        for i, c in enumerate(curve_list[:-2]):
+        count = 0
+        move_dist = layer_height/frames_per_layer
 
-            c_height_01 = c.PointAtStart.Z
-            c_height_02 = curve_list[i+1].PointAtStart.Z
+        for i, f in enumerate(frames):
+            move_trans = rg.Transform.Translation(0,0,move_dist*(i%frames_per_layer))
+            f.Transform(move_trans)
 
-            if self.is_almost_equal(c_height_01, c_height_02):
-
-                temp_list.append(c)
-
-            else:
-
-                temp_list.append(c)
-                nested_list.append(temp_list)
-                temp_list = []
-
-        return nested_list
+        return frames
 
 
-    def resample_points_by_count(self, curve, line_definition, append_point_0=True):
+    def cross_product(self, vector_a, vector_b):
+        """Return the perpendicular vector
+        from two given vectors
+        """
+        a_x, a_y, a_z = vector_a[0], vector_a[1], vector_a[2]
+        b_x, b_y, b_z = vector_b[0], vector_b[1], vector_b[2]
 
-        """resamples the curve by count of points
+        c_x, c_y, c_z = (a_y*b_z - a_z*b_y), (a_z*b_x - a_x*b_z), (a_x*b_y - a_y*b_x)
+
+        vector_c = rg.Vector3d(c_x, c_y, c_z)
+
+        return vector_c
+
+
+    def construct_tcp_frames(self, slice_curves, normals_list=[]):
+        """constructs tcp frames
+        """
+        vector_x0 = [-1,0,0]
+        normal = rg.Vector3d(0,0,1)
+        tcp_frame_list = []
+
+        point_list = [s.resample_points_by_count() for s in slice_curves]
+        point_list = [item for sublist in point_list for item in sublist]
+
+        if len(normals_list) > 1:
+            for point, normal in zip(point_list, normals_list):
+                vector_y = rg.Vector3d(self.cross_product(vector_x0, normal))
+                vector_x = rg.Vector3d(self.cross_product(normal, vector_y))
+                tcp_frame = rg.Plane(point, vector_y, vector_x)
+                tcp_frame_list.append(tcp_frame)
+
+        else:
+            for point in point_list:
+                tcp_frame = rg.Plane(point, normal)
+                tcp_frame_list.append(tcp_frame)
+
+        return tcp_frame_list
+
+
+    def length_of_vector(self, vector):
+        """calculates length of vector
+        """
+        return math.sqrt(vector.X**2 + vector.Y**2 + vector.Z**2)
+
+
+    def dot_product(self, vector01, vector02):
+        """calculates dot product
+        """
+        return vector01.X*vector02.X + vector01.Y*vector02.Y + vector01.Z*vector02.Z
+
+
+    def angle_two_vectors(self, vector01, vector02):
+        """calculates angle between two vectors
+        """
+        dot_pro = self.dot_product(vector01, vector02)
+        len_01 = self.length_of_vector(vector01)
+        len_02 = self.length_of_vector(vector02)
+
+        return math.acos(dot_pro/(len_01*len_02))
+
+
+    def tcp_normals(self, nested_curve_list, line_definition):
+        """calculates the normals of frames based on
+            cantiliver
         """
 
-        length = curve.GetLength()
-        points_per_curve = int(round(length/line_definition))
+        curve_point_normal_list = []
+        start_shift = 0
 
-        # print type(curve)
+        for i,curve_list in enumerate(nested_curve_list):
+            for j,curve in enumerate(curve_list):
+                points = self.resample_points_by_count(curve, line_definition)
+                point_normal_list = []
 
-        divisions = curve.DivideByCount(points_per_curve, True)
-        # print divisions
+                for k,point in enumerate(points):
+                    if i < self.layer_height:
+                        point_normal = (point, rg.Vector3d(0,0,1))
+                        point_normal_list.append(point_normal)
 
-        points = [curve.PointAt(d) for d in divisions]
+                curve_point_normal_list.append([curve, point_normal_list])
 
-        if append_point_0:
+        for i, c in enumerate(self.curve_list[1:]):
+            c_height = c.PointAtStart.Z
 
-            points.append(points[0])
+            for j, p in enumerate(self.point_list[start_shift:]):
+                p_height = p.Z
 
-        return points
+                if SliceCurve.is_almost_equal(c_height, p_height):
 
+                    _, c_double = self.curve_list[i].ClosestPoint(p)
+                    c_point = self.curve_list[i].PointAt(c_double)
 
-    def is_almost_equal(self, x ,y ,epsilon=1*10**(-8)):
+                    vector01 = rg.Vector3d(c_point)
+                    vector02 = rg.Vector3d(p)
+                    p_normal = vector02 - vector01
+                    p_normal.Unitize()
 
-    	"""Return True if two values are close in numeric value
-    		By default close is withing 1*10^-8 of each other
-            i.e. 0.00000001
-    	"""
-    	return abs(x-y) <= epsilon
+                    z_vector = rg.Vector3d(0,0,1)
+                    angle = self.angle_two_vectors(z_vector, p_normal)
+
+                    if angle < 0.45: p_normal = z_vector
+
+                    perp_vector = rg.Vector3d(0,0,1)
+                    p_normal = p_normal + perp_vector
+                    p_normal = p_normal + perp_vector
+                    normals_list.append(p_normal)
+                    start_shift += 1
+
+                elif p_height > c_height: break
+
+        return normals_list
