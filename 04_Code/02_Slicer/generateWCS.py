@@ -4,21 +4,29 @@ import Rhino.Geometry as rg
 import scriptcontext as sc
 import math
 import collections
+
+"""import SliceCurve
+"""
 import sliceCurve
 reload(sliceCurve)
 from sliceCurve import SliceCurve
+
+"""import SlicePoint
+"""
+import sliceFrame
+reload(sliceFrame)
+from sliceFrame import SliceFrame
 
 class GenerateWCS():
     """This class generates WCS frames for UR
     """
     def __init__(self, layer_height, line_definition,
-        normal_speed, fast_speed, tcp_bool=True):
+        normal_speed, fast_speed):
 
         self.layer_height = layer_height
         self.line_definition = line_definition
         self.normal_speed = normal_speed
         self.fast_speed = fast_speed
-        self.tcp_bool = tcp_bool
 
 
     def generate_WCS_frames(self, slice_curves):
@@ -29,36 +37,33 @@ class GenerateWCS():
         # self.tcp_frames = self.spiral(self.tcp_frames, self.layer_height)
 
         WCS_list = []
-        extrude = 1
+        # extrude = 1
 
         for i, f in enumerate(tcp_frames):
-
-            speed = self.normal_speed
-            vector_x = f.XAxis
-            vector_y = f.YAxis
-            p = f.Origin
+            extrude = 1
+            speed = int(self.normal_speed-(f.cantiliver*15))
+            if f.frame.Origin.Z<0.1: speed-=20
+            print speed
+            vector_x = f.frame.XAxis
+            vector_y = f.frame.YAxis
+            p = f.frame.Origin
             safety_point = False
 
             if i==0 or i==len(tcp_frames)-1: radius = 0
             else:
                 radius, max_length = self.calc_blend_radius(p,
-                tcp_frames[i-1].Origin, tcp_frames[i+1].Origin)
+                tcp_frames[i-1].frame.Origin, tcp_frames[i+1].frame.Origin)
 
-                if max_length > self.line_definition*2:
+                if max_length > self.line_definition:
+                    extrude = 0
                     radius = 0
                     safety_point = True
                     safety_point01 = [p.X, p.Y, p.Z+self.line_definition, vector_x.X, vector_x.Y,
                         vector_x.Z, vector_y.X, vector_y.Y, vector_y.Z,
                         self.normal_speed, 0, 0]
-                    safety_point02 = [tcp_frames[i+1].Origin.X, tcp_frames[i+1].Origin.Y,
-                        p.Z+1, vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y,
+                    safety_point02 = [tcp_frames[i+1].frame.Origin.X, tcp_frames[i+1].frame.Origin.Y,
+                        p.Z+10, vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y,
                         vector_y.Z, self.normal_speed, 0, 0]
-
-                # dist = p.Z - tcp_frames[i+1].Z
-                #
-                # if dist > self.line_definition*2: safety_point = [point_list[i+1].X, point_list[i+1].Y,
-                #     p.Z+1, vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y,
-                #     vector_y.Z, self.normal_speed, 0, 0]
 
             temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
                 vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
@@ -102,41 +107,30 @@ class GenerateWCS():
         return frames
 
 
-    def cross_product(self, vector_a, vector_b):
-        """Return the perpendicular vector
-        from two given vectors
-        """
-        a_x, a_y, a_z = vector_a[0], vector_a[1], vector_a[2]
-        b_x, b_y, b_z = vector_b[0], vector_b[1], vector_b[2]
-
-        c_x, c_y, c_z = (a_y*b_z - a_z*b_y), (a_z*b_x - a_x*b_z), (a_x*b_y - a_y*b_x)
-
-        vector_c = rg.Vector3d(c_x, c_y, c_z)
-
-        return vector_c
-
-
-    def construct_tcp_frames(self, slice_curves, normals_list=[]):
+    def construct_tcp_frames(self, slice_curves):
         """constructs tcp frames
         """
-        vector_x0 = [-1,0,0]
-        normal = rg.Vector3d(0,0,1)
+        tcp_vector = [-1,0,0]
+        base_normal = False
         tcp_frame_list = []
 
-        point_list = [s.resample_points_by_count() for s in slice_curves]
-        point_list = [item for sublist in point_list for item in sublist]
+        for i,s in enumerate(slice_curves):
+            dist = s.seam.DistanceTo(slice_curves[i-1].seam)
+            if dist>self.line_definition: base_normal=[0,0,1]
 
-        if len(normals_list) > 1:
-            for point, normal in zip(point_list, normals_list):
-                vector_y = rg.Vector3d(self.cross_product(vector_x0, normal))
-                vector_x = rg.Vector3d(self.cross_product(normal, vector_y))
-                tcp_frame = rg.Plane(point, vector_y, vector_x)
-                tcp_frame_list.append(tcp_frame)
+            for f in s.frames:
+                if base_normal: normal=base_normal
+                else: normal=f.calc_cantiliver_normal(f.point, slice_curves[i-1].curve)
+                # print self.angle_two_vectors(normal,[0,0,1])
+                # if (math.pi/4) > abs(self.angle_two_vectors(normal,[0,0,1])) > (math.pi/8):
+                #     print self.angle_two_vectors(normal,[0,0,1])
+                # else: normal=[0,0,1]
 
-        else:
-            for point in point_list:
-                tcp_frame = rg.Plane(point, normal)
-                tcp_frame_list.append(tcp_frame)
+                f.calc_frame(f.point, tcp_vector, [0,0,1])
+                f.cantiliver = abs(self.angle_two_vectors(normal,[0,0,1]))
+                tcp_frame_list.append(f)
+
+            base_normal = False
 
         return tcp_frame_list
 
@@ -144,13 +138,13 @@ class GenerateWCS():
     def length_of_vector(self, vector):
         """calculates length of vector
         """
-        return math.sqrt(vector.X**2 + vector.Y**2 + vector.Z**2)
+        return math.sqrt(vector[0]**2 + vector[1]**2 + vector[2]**2)
 
 
     def dot_product(self, vector01, vector02):
         """calculates dot product
         """
-        return vector01.X*vector02.X + vector01.Y*vector02.Y + vector01.Z*vector02.Z
+        return vector01[0]*vector02[0] + vector01[1]*vector02[1] + vector01[2]*vector02[2]
 
 
     def angle_two_vectors(self, vector01, vector02):
@@ -159,6 +153,7 @@ class GenerateWCS():
         dot_pro = self.dot_product(vector01, vector02)
         len_01 = self.length_of_vector(vector01)
         len_02 = self.length_of_vector(vector02)
+        # print len_01*len_02
 
         return math.acos(dot_pro/(len_01*len_02))
 

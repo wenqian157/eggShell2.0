@@ -14,14 +14,13 @@ class Slice():
     """
 
     def __init__(self, layer_height, fix_self_intersections,
-        smooth_curves, attractor_points):
+        smooth_curves, line_definition):
 
         self.layer_height = layer_height
-        self.line_definition = layer_height*5
+        self.line_definition = line_definition
         self.intersection_buffer = 0.04
         self.fix_self_intersections_bool = fix_self_intersections
         self.smooth_curves_bool = smooth_curves
-        self.attractor_points = attractor_points
 
 
     def contour_mesh(self, mesh):
@@ -35,25 +34,20 @@ class Slice():
         self.slice_curves = self.shortest_path(self.slice_curves)
 
         return self.slice_curves
+        # return self.contour_curves
 
 
     def create_contour_curves(self, mesh):
         """calls the createcontourcurves command from rhino,
         moves it to origin, erases unwanted curves and aligns seams
         """
-
         min_z, max_z = self.get_min_max_z(mesh)
-
-        start_contour, end_contour = self.define_start_end(min_z, max_z, True)
-
+        start_contour, end_contour = self.define_start_end(15, 250, True)
         slice_curves = []
-
         contour_curves = rg.Mesh.CreateContourCurves(mesh,
             rg.Point3d(0,0,start_contour), rg.Point3d(0,0,end_contour),
             self.layer_height)
-
         self.move_to_origin(contour_curves)
-
         contour_curves = self.fix_errors(contour_curves)
 
         return contour_curves
@@ -62,12 +56,12 @@ class Slice():
     def create_sliced_curves(self, curve_list):
         """creates type slicecurves from curves
         """
-
         slice_curves = []
 
         for c in curve_list:
             slice_curve = SliceCurve(c, self.line_definition)
-            slice_curves.append(slice_curve)
+            if slice_curve.area:slice_curves.append(slice_curve)
+            else: print None
 
         return slice_curves
 
@@ -75,7 +69,6 @@ class Slice():
     def shortest_path(self, slice_curves, max_branch_diff=15):
         """finds the shortest path based on max_branch_diff
         """
-
         buffer = 3
         max_list_len = len(slice_curves)
         shortest_path_list = []
@@ -96,7 +89,7 @@ class Slice():
                     else: compare_slice = shortest_path_list[-1]
 
                     dist = min(slice_curve.center.DistanceTo(compare_slice.center),
-                        slice_curve.curve.PointAtStart.DistanceTo(compare_slice.curve.PointAtStart))
+                        slice_curve.seam.DistanceTo(compare_slice.seam))
 
                     if dist<buffer and abs(slice_curve.area-compare_slice.area)<2000:
                         shortest_path_list.append(slice_curves[i])
@@ -113,7 +106,7 @@ class Slice():
                 slice_curves_dup = [i for j, i in enumerate(slice_curves_dup) if j not in index_list]
                 slice_curves = slice_curves_dup[:]
 
-        shortest_path_list.pop(0)
+        # shortest_path_list.pop(0)
         return shortest_path_list
 
 
@@ -125,20 +118,16 @@ class Slice():
         avg_length = 0
 
         for c in curves:
-
             c_length = c.GetLength()
-
             avg_length += c_length
 
         avg_length = avg_length/len(curves)
 
         for c in curves:
-
             c_length = c.GetLength()
 
             if c_length > avg_length/10:
-
-                closed = c.MakeClosed(self.layer_height*10)
+                closed = c.MakeClosed(self.layer_height*100)
                 c.Domain = rg.Interval(0, 1)
                 fixed_curves.append(c)
 
@@ -179,8 +168,8 @@ class Slice():
 
         for i, s in enumerate(slice_curves[:-2]):
 
-            c_height_01 = s.curve.PointAtStart.Z
-            c_height_02 = slice_curves[i+1].curve.PointAtStart.Z
+            c_height_01 = s.seam.Z
+            c_height_02 = slice_curves[i+1].seam.Z
 
             if self.is_almost_equal(c_height_01, c_height_02):
 
@@ -246,6 +235,7 @@ class Slice():
                     point = c.curve.PointAt(domain)
 
                 seam_success = c.curve.ChangeClosedCurveSeam(domain)
+                c.SCurve = c.curve
                 aligned_slice_curves.append(c)
 
         return aligned_slice_curves
