@@ -15,7 +15,7 @@ class SliceCurve(object):
     """This class creates a slice curve
     """
 
-    def __init__(self, curve, line_definition,
+    def __init__(self, curve, line_definition=10,
         append_bool=True):
         """initiates the class with self.curve empty
         """
@@ -23,8 +23,8 @@ class SliceCurve(object):
         self.line_definition = line_definition
         self.append_bool = append_bool
         self.seam = curve.PointAtStart
-        self.points = self.resample_points_by_count(curve,
-            line_definition, append_bool)
+        self.points = self.get_polyline_points(curve)
+        self.resampled_points = self.resample_points_by_count(curve, self.line_definition)
         self.frames = self.generate_sliceFrames(self.points)
         self.center = self.get_center_of_points(self.points)
         self.area = self.get_area(curve)
@@ -40,8 +40,8 @@ class SliceCurve(object):
         """sets SCure
         """
         self.seam = curve.PointAtStart
-        self.points = self.resample_points_by_count(curve,
-            self.line_definition, self.append_bool)
+        self.points = self.get_polyline_points(curve)
+        self.resampled_points = self.resample_points_by_count(curve, self.line_definition)
         self.frames = self.generate_sliceFrames(self.points)
         self.center = self.get_center_of_points(self.points)
         self.area = self.get_area(curve)
@@ -54,6 +54,7 @@ class SliceCurve(object):
         self.center = None
         self.area = None
         self.points = None
+        self.resampled_points = None
         self.frames = None
 
     def generate_sliceFrames(self, points):
@@ -67,11 +68,37 @@ class SliceCurve(object):
         return frames
 
 
+    def delete_very_close_points(self, points, buffer=0.5):
+        """deletes very close points
+        """
+        while True:
+            pop_list = False
+            for i,p in enumerate(points):
+                if (i+1) < len(points):
+                    dist = self.two_d_distance([p[0], p[1]],
+                        [points[i+1][0], points[i+1][1]])
+                    if dist<buffer:
+                        pop_list = True
+                        points.pop(i+1)
+            if not pop_list:
+                break
+
+        return points
+
+
+    def two_d_distance(self, point01, point02):
+        """gets 2D distance between two points
+        """
+        dist = math.sqrt((point01[0] - point02[0])**2 + (point01[1] - point02[1])**2)
+        return dist
+
+
     def get_area(self, curve):
         """calculates area of planar curve
         """
+        curve.MakeClosed(99999)
         area = rg.AreaMassProperties.Compute(curve)
-        if area: return area.Area
+        if area: return abs(area.Area)
 
 
     def is_almost_equal(self, x ,y ,epsilon=1*10**(-8)):
@@ -109,11 +136,24 @@ class SliceCurve(object):
             self.normals.append(p_normal)
 
 
+    def get_polyline_points(self, curve):
+        """get points from polyline
+        """
+        polyline = curve.ToPolyline()
+        segments = polyline.GetSegments()
+        points = [s[0] for s in segments]
+        points = self.delete_very_close_points(points)
+        points.append(segments[0][0])
+
+        return points
+
+
     def resample_points_by_count(self, curve, line_definition,
         append_point_0=True):
         """resamples the curve by count of points
         """
         length = curve.GetLength()
+        curve = curve.Smooth(0.1, True, True, False, True, 0)
         points_per_curve = int(round(length/line_definition))
         divisions = curve.DivideByCount(points_per_curve, True)
         points = [curve.PointAt(d) for d in divisions]

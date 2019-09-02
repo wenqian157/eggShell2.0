@@ -1,8 +1,8 @@
 
 wcsargs = {
 
-    'line_definition': 10,
-    'normal_speed': 48,
-    'fast_speed': 50,
+    'line_definition': 15,
+    'normal_speed': 45,
+    'fast_speed': 100,
 
 }

@@ -33,6 +33,7 @@ class GenerateWCS():
         """generates WCS frames
         """
         tcp_frames = self.construct_tcp_frames(slice_curves)
+        self.del_very_close_frames(tcp_frames,1)
         # self.normals_list = self.tcp_normals(nested_curve_list, self.line_definition)
         # self.tcp_frames = self.spiral(self.tcp_frames, self.layer_height)
 
@@ -43,7 +44,6 @@ class GenerateWCS():
             extrude = 1
             speed = int(self.normal_speed-(f.cantiliver*15))
             if f.frame.Origin.Z<0.1: speed-=20
-            print speed
             vector_x = f.frame.XAxis
             vector_y = f.frame.YAxis
             p = f.frame.Origin
@@ -63,10 +63,11 @@ class GenerateWCS():
                         self.normal_speed, 0, 0]
                     safety_point02 = [tcp_frames[i+1].frame.Origin.X, tcp_frames[i+1].frame.Origin.Y,
                         p.Z+10, vector_x.X, vector_x.Y, vector_x.Z, vector_y.X, vector_y.Y,
-                        vector_y.Z, self.normal_speed, 0, 0]
+                        vector_y.Z, self.fast_speed, 0, 0]
 
             temp_list = [p.X, p.Y, p.Z, vector_x.X, vector_x.Y, vector_x.Z,
                 vector_y.X, vector_y.Y, vector_y.Z, speed, radius, extrude]
+            # print temp_list
             WCS_list.append(temp_list)
 
             if safety_point: WCS_list.extend([safety_point01,safety_point02])
@@ -74,6 +75,32 @@ class GenerateWCS():
         point_list = [rg.Point3d(WCS[0], WCS[1], WCS[2]) for WCS in WCS_list]
 
         return WCS_list, point_list
+
+
+    def del_very_close_frames(self, tcp_frames, buffer=0.1):
+        """deletes very close points
+        """
+        # while True:
+            # pop_list = False
+        # for i,frame in enumerate(tcp_frames):
+        #     if (i+1) < len(tcp_frames):
+        #         dist = self.two_d_distance([frame.point[0], frame.point[1]],
+        #             [tcp_frames[i+1].point[0], tcp_frames[i+1].point[1]])
+        #         if dist<buffer:
+                    # print dist
+                    # pop_list = True
+                    # tcp_frames.pop(i+1)
+            # if not pop_list:
+            #     break
+
+        # return tcp_frames
+
+
+    def two_d_distance(self, point01, point02):
+        """gets 2D distance between two points
+        """
+        dist = math.sqrt((point01[0] - point02[0])**2 + (point01[1] - point02[1])**2)
+        return dist
 
 
     def calc_blend_radius(self, current_point, prev_point,
@@ -153,9 +180,12 @@ class GenerateWCS():
         dot_pro = self.dot_product(vector01, vector02)
         len_01 = self.length_of_vector(vector01)
         len_02 = self.length_of_vector(vector02)
-        # print len_01*len_02
+        try:
+            angle = math.acos(dot_pro/(len_01*len_02))
+        except:
+            angle = 0.0
 
-        return math.acos(dot_pro/(len_01*len_02))
+        return angle
 
 
     def tcp_normals(self, nested_curve_list, line_definition):

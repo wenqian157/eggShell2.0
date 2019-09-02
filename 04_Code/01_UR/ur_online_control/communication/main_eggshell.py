@@ -65,7 +65,8 @@ def main():
         ur.send_command_movel([x, y, z, ax, ay, az], v=speed, a=acc)
         ur.send_command_wait(1.0)
 
-        #turn on air
+        #turn on air and off motor
+        ur.send_command_digital_out(4, False)
         ur.send_command_digital_out(5, True)
 
         ur.wait_for_ready()
@@ -90,22 +91,25 @@ def main():
         print("We received %i commands." % len(commands))
 
         # printing path
+        count = 0
         for i in range(0, len(commands)):
 
             printing_cmd = commands[i]
             x, y, z, ax, ay, az, speed, radius, extrude_bool = printing_cmd
 
-            # if extrude_bool == 0:
-            #     ur.send_command_digital_out(4, False)
-            #     ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
-            #     ur.send_command_wait(0.1)
-            #     ur.send_command_digital_out(4, True)
-            #
-            # else:
+            if extrude_bool == 0:
+                count += 1
+                ur.send_command_digital_out(4, False)
+                ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
+                if count>2:
+                    ur.send_command_digital_out(4, True)
+                    ur.send_command_wait(0.7)
 
-            ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
+            else:
+                count = 0
+                ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
 
-        for i, cmd in enumerate(commands):
+        for i, cmd in enumerate(commands[:-2]):
             ur.wait_for_command_executed(i)
             print("Executed command", i+1)
             print(cmd)
