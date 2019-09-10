@@ -101,9 +101,9 @@ def main():
                 count += 1
                 ur.send_command_digital_out(4, False)
                 ur.send_command_movel([x, y, z, ax, ay, az], v=speed, r=radius)
-                if count>2:
+                if count>1:
                     ur.send_command_digital_out(4, True)
-                    ur.send_command_wait(0.7)
+                    ur.send_command_wait(0.5)
 
             else:
                 count = 0

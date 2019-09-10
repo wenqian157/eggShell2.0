@@ -1,12 +1,24 @@
 
 import rhinoscriptsyntax as rs
 import Rhino.Geometry as rg
-import scriptcontext as sc
 import math
-import collections
+
+import sliceMath
+reload (sliceMath)
+
 import sliceCurve
 reload(sliceCurve)
 from sliceCurve import SliceCurve
+
+import shortestPath
+reload (shortestPath)
+from shortestPath import ShortestPath
+
+import graphClass
+reload(graphClass)
+from graphClass import Graph
+
+from itertools import combinations
 
 
 class Slice():
@@ -26,14 +38,115 @@ class Slice():
     def contour_mesh(self, mesh):
         """creates curves from a mesh by contouring the mesh
         """
+        branch_points, branch_curves = [],[]
 
         self.contour_curves = self.create_contour_curves(mesh)
         self.slice_curves = self.create_sliced_curves(self.contour_curves)
-        self.slice_curves, branch_points, branch_curves = self.auto_align_seams(self.slice_curves, 0.005)
-        self.slice_curves = self.shortest_path(self.slice_curves, 5)
+        self.slice_curves, branch_points, branch_curves = self.auto_align_seams(self.slice_curves, 1)
+        self.construct_tcp_frames(self.slice_curves)
+        self.slice_curves = self.shortest_path_one(self.slice_curves)
+        self.slice_curves = self.shortest_path_two(self.slice_curves, 7)
 
         return self.slice_curves, branch_points, branch_curves
-        # return self.contour_curves
+        # return self.slice_curves
+
+
+    def construct_tcp_frames(self, slice_curves_base):
+        """constructs tcp frames
+        """
+
+        len_points = 0
+        for s in slice_curves_base:
+            len_points += len(s.points)
+
+        nested_slice_curves = self.reorganize_by_height(slice_curves_base)
+        tcp_vector = [-1,0,0]
+        tcp_frame_list = []
+
+        for i,slice_curves in enumerate(nested_slice_curves):
+            for s in slice_curves:
+                min_i,min_c = self.closest_curve_to_point(s.seam, nested_slice_curves[i-1])
+                # closest_curve = nested_slice_curves[i-1][min_i]
+
+                for f in s.frames:
+                    if i == 0:
+                        f.cantiliver = 0
+                    else:
+                        normal=f.calc_cantiliver_normal(f.point, min_c.curve)
+                        f.cantiliver = abs(sliceMath.angle_two_vectors(normal,[0,0,1]))
+                    # print f.cantiliver
+
+
+    def closest_curve_to_point(self, point, curve_list):
+
+        min_dist = 999999
+
+        for i,c in enumerate(curve_list):
+            dist = sliceMath.three_d_distance(point,c.seam)
+            if min_dist>dist:
+                min_dist,min_i,min_c = dist,i,c
+
+        # print min_dist
+
+        return i,min_c
+
+
+    def shortest_path_one(self, slice_curves):
+        """reorganizes slice_curves by shortest path
+        """
+        nested_slice_curves = self.reorganize_by_height(slice_curves)
+        shortest_path = []
+
+        for s_curves in nested_slice_curves:
+            new_list = [s_curves[0]]
+            s_curves_copy = s_curves[1:]
+
+            while True:
+                if len(new_list) >= len(s_curves):
+                    break
+                else:
+                    min_dist = 999999
+                    for i,s in enumerate(s_curves_copy):
+                        dist = sliceMath.two_d_distance(s.seam, new_list[-1].seam)
+                        if dist<min_dist: min_s,min_i = s,i
+
+                    new_list.append(s)
+                    s_curves_copy.pop(min_i)
+
+            for n in new_list:
+                shortest_path.append(n)
+
+        return shortest_path
+        # nested_slice_curves = self.reorganize_by_height(slice_curves)
+        #
+        # for s_curves in nested_slice_curves:
+        #     seam_start = s_curves[0].seam
+        #     seam_list = [s.seam for s in s_curves[1:]]
+        #     _,max_i,_ = sliceMath.farthest_point_from_point(seam_start,seam_list)
+        #     # print max_i
+        #     graph = Graph()
+        #     comb = combinations([i for i in range(len(s_curves))], 2)
+        #     for i in list(comb):
+        #         weight = sliceMath.two_d_distance(s_curves[i[0]].seam,
+        #             s_curves[i[1]].seam)
+        #         graph.add_edge(i[0], i[1], weight)
+        #     shortest_path = graphClass.dijsktra(graph, 0, max_i+1)
+            # print shortest_path
+            # edge_len = 0
+            # edge_list = []
+            # for i,s_a in enumerate(s_curves):
+            #     for j,s_b in enumerate(s_curves[1:]):
+            #         if i!=j+1:
+            #             # edge_len+=1
+            #             weight = sliceMath.two_d_distance(s_a.seam,s_b.seam)
+            #             edge_list.append([i, j+1, weight])
+            # graph = Graph()
+            # for e in edge_list:
+            #     print e[0], e[1], e[2]
+            #     graph.add_edge(e[0], e[1], e[2])
+            # # print len(s_curves), min_i
+            # shortest_path = graphClass.dijsktra(graph, 0, min_i)
+            # # print shortest_path
 
 
     def create_contour_curves(self, mesh):
@@ -41,7 +154,7 @@ class Slice():
         moves it to origin, erases unwanted curves and aligns seams
         """
         min_z, max_z = self.get_min_max_z(mesh)
-        start_contour, end_contour = self.define_start_end(min_z+10, max_z-10, True)
+        start_contour, end_contour = self.define_start_end(720, 850, True)
         slice_curves = []
         contour_curves = rg.Mesh.CreateContourCurves(mesh,
             rg.Point3d(0,0,start_contour), rg.Point3d(0,0,end_contour),
@@ -72,7 +185,7 @@ class Slice():
         for i,s01 in enumerate(slice_curves):
             for j,s02 in enumerate(slice_curves):
                 if i!=j:
-                    dist = self.two_d_distance(s01.seam,s02.seam)
+                    dist = sliceMath.two_d_distance(s01.seam,s02.seam)
                     if dist<buffer:
                         pair=(i,j)
                         return pair
@@ -109,45 +222,70 @@ class Slice():
 
 
 
-    def shortest_path(self, slice_curves, max_branch_diff=10):
+    def shortest_path_two(self, slice_curves, max_branch_diff=10):
         """finds the shortest path based on max_branch_diff
         """
-        slice_curves = self.join_close_curves(slice_curves, 15)
+        slice_curves = self.join_close_curves(slice_curves, 10)
 
-        buffer = 2.5
+        buffer = 10
         max_list_len = len(slice_curves)
         shortest_path_list = []
         loop_slice = slice_curves[0]
+        count_a = 0
 
         while True:
 
-            if len(shortest_path_list) >= max_list_len-1: break
+            # if len(shortest_path_list) >= max_list_len-1: break
+            if count_a >= max_list_len-1: break
 
             index_list, loop_index = [], []
             slice_curves_dup = slice_curves[:]
-            count = 0
+            count_b = 0
 
             for i, slice_curve in enumerate(slice_curves):
-                if count == max_branch_diff: break
+                if count_b == max_branch_diff:
+                    if len(loop_index) == 0:
+                        loop_slice = shortest_path_list[-1]
+                        # print shortest_path_list[-1]
+                    else:loop_slice = slice_curves[loop_index[0]]
+                    trans_p_a = rg.Point3d(shortest_path_list[-1].seam[0],
+                        shortest_path_list[-1].seam[1], shortest_path_list[-1].seam[2]+15)
+                    trans_p_b = rg.Point3d(loop_slice.seam[0],
+                        loop_slice.seam[1], loop_slice.seam[2]+15)
+                    trans_curve = rg.PolylineCurve([trans_p_a, trans_p_b])
+                    slice_curve_trans = SliceCurve(trans_curve, self.line_definition,False)
+                    slice_curve_trans.transition_curve = True
+                    for f in slice_curve_trans.frames:
+                        f.cantiliver = 0
+                        f.transition = True
+                    shortest_path_list.append(slice_curve_trans)
+                    break
 
                 if i == 0: compare_slice = loop_slice
                 else: compare_slice = shortest_path_list[-1]
 
-                dist = min(slice_curve.center.DistanceTo(compare_slice.center),
-                    slice_curve.seam.DistanceTo(compare_slice.seam))
+                dist = max(sliceMath.three_d_distance(slice_curve.center, compare_slice.center),
+                    sliceMath.three_d_distance(slice_curve.seam, compare_slice.seam))
 
-                if dist<buffer and abs(slice_curve.area-compare_slice.area)<2000 and abs(slice_curve.seam.Z-compare_slice.seam.Z)<self.layer_height*1.5:
-                # if dist<buffer:
-                    shortest_path_list.append(slice_curves[i])
+                # if dist<buffer and abs(slice_curve.area-compare_slice.area)<2000 and abs(slice_curve.seam[2]-compare_slice.seam[2])<self.layer_height*1.1:
+                if dist<buffer and abs(slice_curve.seam[2]-compare_slice.seam[2])<self.layer_height*1.1:
+
+                    # slice_curve.pop_last_point()
+                    # if count != 0:slice_curve.frames.pop(0)
+                    # else:slice_curve.frames.pop(-1)
+                    shortest_path_list.append(slice_curve)
+                    count_a += 1
                     index_list.append(i)
-                    count += 1
+                    count_b += 1
 
                 else: loop_index.append(i)
 
             if len(loop_index) == 0: loop_slice = shortest_path_list[-1]
             else: loop_slice = slice_curves[loop_index[0]]
 
-            if len(index_list) == 0: shortest_path_list.append(slice_curves[0])
+            if len(index_list) == 0:
+                shortest_path_list.append(slice_curves[0])
+                count_a += 1
 
             slice_curves_dup = [i for j, i in enumerate(slice_curves_dup) if j not in index_list]
             slice_curves = slice_curves_dup[:]
@@ -209,7 +347,7 @@ class Slice():
             c_height_01 = s.seam.Z
             c_height_02 = slice_curves[i+1].seam.Z
 
-            if self.is_almost_equal(c_height_01, c_height_02):
+            if sliceMath.is_almost_equal(c_height_01, c_height_02):
 
                 temp_list.append(s)
 
@@ -222,30 +360,27 @@ class Slice():
         return nested_list
 
 
-    def shift_seam(self, slice_curve, target_point, shift_ratio=0.01):
+    def shift_seam(self, slice_curve, target_point, shift_ratio=0.01, loops=3):
         """shifts seam of curve towards desired point
         """
         length = slice_curve.curve.GetLength()
-        # shift = length*shift_ratio
-        shift = shift_ratio
+        shift = shift_ratio/length
         seam_bool=True
-        dist = slice_curve.seam.DistanceTo(target_point)
-        point01 = slice_curve.curve.PointAt(shift)
-        dist01 = point01.DistanceTo(target_point)
-        point02 = slice_curve.curve.PointAt(-shift)
-        dist02 = point02.DistanceTo(target_point)
+        tuple_list = []
 
-        if dist01<dist: seam_domain,seam_point = shift,point01
-        elif dist02<dist: seam_domain,seam_point = -shift,point02
-        else: seam_bool=False
+        for i in range(-loops,loops+1):
+            point = slice_curve.curve.PointAt(shift*i)
+            dist = sliceMath.three_d_distance(point, target_point)
+            tuple_list.append((dist,point,shift*i))
 
-        if seam_bool:
-            seam_success = slice_curve.curve.ChangeClosedCurveSeam(seam_domain)
-            set_domain = rg.Interval(0,1)
-            slice_curve.curve.Domain = set_domain
-            slice_curve.SCurve = slice_curve.curve
-            return seam_success,seam_point
-        else: return False,False
+        sorted_list = sorted(tuple_list, key=lambda tup: tup[0])
+        seam_point, seam_domain = sorted_list[0][1], sorted_list[0][2]
+
+        seam_success = slice_curve.curve.ChangeClosedCurveSeam(seam_domain)
+        set_domain = rg.Interval(0,1)
+        slice_curve.curve.Domain = set_domain
+        slice_curve.SCurve = slice_curve.curve
+        return seam_success,seam_point
 
 
     def change_seam(self, slice_curve, target_point):
@@ -266,14 +401,17 @@ class Slice():
         """finds closest point from curve
         """
         min_dist = 99999
+        # print min_p
 
         for p in point_list:
             _, domain = curve.ClosestPoint(p)
             point = curve.PointAt(domain)
-            dist = self.two_d_distance(p, point)
-            if min_dist>dist: min_dist,min_p=dist,p
+            dist = sliceMath.three_d_distance(p, point)
+            if min_dist>dist:
+                min_dist = dist
+                min_p=p
 
-        return min_p
+        return min_p, min_dist
 
     def closest_point_from_points(self, point, point_list):
         """finds closest point from list of point
@@ -281,10 +419,12 @@ class Slice():
         min_dist = 99999
 
         for i,p in enumerate(point_list):
-            dist = self.two_d_distance(p, point)
-            if min_dist>dist>1: min_dist,min_p,min_i=dist,p,i
+            # dist = self.two_d_distance(p, point)
+            dist = sliceMath.three_d_distance(p, point)
+            if min_dist>dist:
+                min_dist,min_p,min_i=dist,p,i
 
-        return min_p,min_i
+        return min_p,min_dist
 
 
     def find_branch_split_points(self, slice_curves):
@@ -298,95 +438,84 @@ class Slice():
             curve_count01 = len(s_list)
             curve_count02 = len(nested_slice_curves[i+1])
             if curve_count01 != curve_count02:
-                if curve_count01>curve_count02: s = s_list
-                else: s = nested_slice_curves[i+1]
-                pair = self.group_curves_center(s)
-                branch_curves.extend([s[pair[0]].curve, s[pair[1]].curve])
-                pair = self.closest_points_from_points(s[pair[0]].points,
-                    s[pair[1]].points)
-                avrg_p = self.avrg_between_points(pair)
-                branch_points.append(avrg_p)
+                if curve_count01>curve_count02:s = s_list
+                else:s = nested_slice_curves[i+1]
+                pair = self.group_curves_center(s, 20)
+                if pair:
+                    branch_curves.extend([s[pair[0]].curve, s[pair[1]].curve])
+                    pair,_ = sliceMath.closest_points_from_points(s[pair[0]].points,
+                        s[pair[1]].points)
+                    avrg_p = sliceMath.get_three_d_center_of_points(pair)
+                    avrg_p = rg.Point3d(avrg_p[0], avrg_p[1], avrg_p[2])
+                    branch_points.append(avrg_p)
 
         return branch_points, branch_curves
 
 
-    def avrg_between_points(self, point_list):
-        """finds the average point in a list of points
-        """
-        sum_x = 0
-        sum_y = 0
-        sum_z = 0
-
-        for p in point_list:
-            sum_x += p.X
-            sum_y += p.Y
-            sum_z += p.Z
-
-        avrg_x = sum_x/len(point_list)
-        avrg_y = sum_y/len(point_list)
-        avrg_z = sum_z/len(point_list)
-        avrg_p = rg.Point3d(avrg_x, avrg_y, avrg_z)
-
-        return avrg_p
-
-
-    def closest_points_from_points(self, point_list01, point_list02):
-        """finds the two closest points from two lists of points
-        """
-        min_dist = 99999
-
-        for p01 in point_list01:
-            for p02 in point_list02:
-                dist = self.two_d_distance(p01,p02)
-                if dist<min_dist: min_dist,pair=dist,(p01,p02)
-
-        return pair
-
-
-    def group_curves_center(self, slice_curves):
+    def group_curves_center(self, slice_curves, buffer=50):
         """groups a list of curves into sub lists
         """
-        min_dist = 99999
+        min_dist = buffer
+        pair = None
 
         for i,s01 in enumerate(slice_curves):
             for j,s02 in enumerate(slice_curves):
                 if i!=j:
-                    dist = self.two_d_distance(s01.center,s02.center)
-                    if dist<min_dist: min_dist,pair=dist,(i,j)
+                    _,dist = sliceMath.closest_points_from_points(s01.points, s02.points)
+                    if dist<min_dist:min_dist,pair=dist,(i,j)
 
         return pair
 
 
-    def auto_align_seams(self, slice_curves, shift_ratio=0.005):
+    def generate_branch_lines(self, branch_points):
+        """generates a collection of lines
+        from branch points
+        """
+        pass
+
+
+    def auto_align_seams(self, slice_curves, shift_ratio=0.005, buffer=1):
         """aligns all seams of all curves
         """
-        aligned_slice_curves = []
-        nested_slice_curves = self.reorganize_by_height(slice_curves)
-        nested_seam_list = []
-
+        aligned_slice_curves, nested_seam_list = [],[]
         branch_points, branch_curves = self.find_branch_split_points(slice_curves)
+        nested_slice_curves = self.reorganize_by_height(slice_curves)
 
         for i, s_list in enumerate(nested_slice_curves):
             temp_seam_list = []
-            for j, c in enumerate(s_list):
-                center_point = self.get_center_slice_curves(c,s_list)
-                if i==0:
-                    _,v = self.change_seam(c, center_point)
-                    temp_seam_list.append(v)
-                else:
-                    closest_seam = self.closest_point_from_curve(c.curve,
-                        nested_seam_list[i-1])
-                    _,v = self.change_seam(c, closest_seam)
 
-                    min_dist = 99999
-                    dist = min_dist
-                    min_b = closest_seam
-                    for b in branch_points:
-                        if c.center.Z<=b.Z:dist=b.DistanceTo(c.center)
-                        if min_dist>dist: min_dist,min_b=dist,b
-                    _,v_shift = self.shift_seam(c, min_b, shift_ratio)
-                    if v_shift:temp_seam_list.append(v_shift)
-                    else: temp_seam_list.append(v)
+            for j, c in enumerate(s_list):
+                branch_points_z = [b for b in branch_points if b[2]>c.center[2]-5]
+
+                if i==0:
+                    center_points = [s.center for s in s_list]
+                    center_point = sliceMath.get_two_d_center_of_points(center_points)
+                    center_point = rg.Point3d(center_point[0], center_point[1], center_point[2])
+                    _,v = self.change_seam(c, center_point)
+                    # temp_seam_list.append(v)
+
+                else:
+                    point_change_seam, dist_seam = self.closest_point_from_curve(c.curve,
+                        nested_seam_list[i-1])
+                    _,v = self.change_seam(c, point_change_seam)
+
+                    if len(branch_points_z)>0:
+
+                        if dist_seam>self.layer_height*10:
+                            point_change_seam, dist_branch = self.closest_point_from_curve(c.curve,
+                                branch_points_z)
+                            _,v = self.change_seam(c, point_change_seam)
+
+                        min_b,dist_center=self.closest_point_from_points(c.seam,
+                        branch_points_z)
+                        if min_b and dist_center<200 and c.area>1500:
+                            _,v = self.shift_seam(c, min_b, shift_ratio)
+                            # temp_seam_list.append(v)
+                        # else: min_b=False
+                        # if v_shift:temp_seam_list.append(v_shift)
+                        # else: temp_seam_list.append(v)
+
+                temp_seam_list.append(v)
 
                 aligned_slice_curves.append(c)
 
@@ -395,21 +524,20 @@ class Slice():
         return aligned_slice_curves, branch_points, branch_curves
 
 
-    def get_center_slice_curves(self, slice_curve, slice_curves, buffer=100):
+    def get_center_slice_curves(self, slice_curves):
         """gets center of several slicecurve type
         """
 
         sum_x = 0
         sum_y = 0
 
-
         for s in slice_curves:
-            sum_x += s.center.X
-            sum_y += s.center.Y
+            sum_x += s.center[0]
+            sum_y += s.center[1]
 
         avrg_x = sum_x/len(slice_curves)
         avrg_y = sum_y/len(slice_curves)
-        avrg_p = rg.Point3d(avrg_x, avrg_y, s.center.Z)
+        avrg_p = rg.Point3d(avrg_x, avrg_y, s.center[2])
         return avrg_p
 
         # dist_centers = self.two_d_distance(slice_curve.center, avrg_p)
@@ -426,13 +554,6 @@ class Slice():
         #     return slice_curve.center
 
 
-    def two_d_distance(self, point01, point02):
-        """gets 2D distance between two points
-        """
-        dist = math.sqrt((point01.X - point02.X)**2 + (point01.Y - point02.Y)**2)
-        return dist
-
-
     def match_curve_direction(self, curves):
         """matches all curves directions
         """
@@ -444,14 +565,6 @@ class Slice():
 
             if vector_angle > math.pi/4:
                 curves[i+1].Reverse()
-
-
-    def is_almost_equal(self, x ,y ,epsilon=1*10**(-8)):
-    	"""Return True if two values are close in numeric value
-    		By default close is withing 1*10^-8 of each other
-            i.e. 0.00000001
-    	"""
-    	return abs(x-y) <= epsilon
 
 
     def define_start_end(self,  min_z, max_z, trim_top_bottom):
